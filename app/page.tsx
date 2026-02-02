@@ -1,3 +1,5 @@
+import RoutingDemo from './components/RoutingDemo';
+
 export default function Home() {
   return (
     <div className="bg-gray-900 text-white min-h-screen">
@@ -31,6 +33,21 @@ export default function Home() {
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Try It Section */}
+      <section className="px-4 py-16">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Try It Live
+            </h2>
+            <p className="text-xl text-gray-300">
+              See AgentRouter in action - test how different prompts get routed to optimal models
+            </p>
+          </div>
+          <RoutingDemo />
         </div>
       </section>
 
