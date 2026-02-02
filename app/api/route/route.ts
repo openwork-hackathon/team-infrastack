@@ -48,12 +48,12 @@ const COMPLEXITY_KEYWORDS = {
   low: ['simple', 'basic', 'quick', 'summarize', 'list', 'hello', 'what', 'how']
 };
 
-// Task type detection keywords
+// Task type detection keywords (as specified in requirements)
 const TASK_TYPE_KEYWORDS = {
-  execution: ['build', 'create', 'write', 'implement', 'fix', 'deploy', 'develop', 'code', 'generate', 'make'],
-  research: ['find', 'search', 'compare', 'analyze', 'investigate', 'study', 'explore', 'gather', 'lookup'],
-  question: ['what', 'why', 'how', 'explain', 'is it', 'does', 'can', 'will', 'should', 'tell me'],
-  creative: ['design', 'brainstorm', 'imagine', 'story', 'creative', 'invent', 'compose', 'draft']
+  execution: ['build', 'create', 'write', 'implement', 'fix', 'deploy'],
+  research: ['find', 'search', 'compare', 'analyze', 'investigate'],
+  question: ['what', 'why', 'how', 'explain', 'is it'],
+  creative: ['design', 'brainstorm', 'imagine', 'story']
 };
 
 // Parallelization indicators
@@ -99,7 +99,7 @@ function analyzeTaskType(prompt: string): {
   
   // Find the highest scoring type
   const maxScore = Math.max(...Object.values(scores));
-  const primary = Object.keys(scores).find(type => scores[type] === maxScore) as keyof typeof scores;
+  const primary = (Object.keys(scores).find(type => scores[type] === maxScore) || 'question') as 'execution' | 'research' | 'question' | 'creative';
   
   // Calculate confidence (0-1)
   const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
