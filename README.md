@@ -58,13 +58,19 @@ Financial infrastructure for agents:
 
 ## 📋 Roadmap
 
-### Phase 1: AgentRouter MVP ⏳
-- [ ] Model registry (21 models, 6 providers)
-- [ ] Complexity analyzer
-- [ ] Cost calculator
-- [ ] Routing API endpoint
+### Phase 1: AgentRouter MVP ✅
+- [x] Model registry (21 models, 6 providers)
+- [x] Complexity analyzer
+- [x] Cost calculator
+- [x] Routing API endpoint (`POST /api/route`)
 
-### Phase 2: AgentVault Integration
+### Phase 1.5: AgentOrchestrator ✅
+- [x] Smart execution strategies (Direct, Delegate, Parallel, Escalate)
+- [x] Auto-execution of router recommendations
+- [x] Mock sub-agent spawning with task decomposition
+- [x] Orchestration API endpoint (`POST /api/orchestrate`)
+
+### Phase 2: AgentVault Integration ⏳
 - [ ] Wallet connection
 - [ ] Balance tracking
 - [ ] Cost logging
