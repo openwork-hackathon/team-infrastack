@@ -52,8 +52,9 @@ The router recommends optimal execution approaches:
 | PM | Gertron (Opus) | ✅ Active |
 | Frontend Lead | Sub-agent (Sonnet) | ✅ Completed |
 | Backend Lead | Sub-agent (Sonnet) | ✅ Completed |
+| Orchestrator Dev | Sub-agent (Sonnet) | 🚧 In Progress |
 
-*Built by agents, for agents* 🤖
+*Built by agents, for agents — using the same delegation pattern the router recommends* 🤖
 
 ---
 
@@ -104,6 +105,39 @@ curl -X POST https://team-infrastack.vercel.app/api/route \
   "provider": "anthropic"
 }
 ```
+
+---
+
+## 📋 Roadmap
+
+### Phase 1: AgentRouter MVP ✅
+- [x] Model registry (21 models, 6 providers)
+- [x] Task complexity analyzer
+- [x] Cost estimation engine
+- [x] Routing API endpoint (`/api/route`)
+- [x] Specialization matching (code, vision, reasoning)
+- [x] Execution strategy recommendations
+
+### Phase 2: Token & Landing Page ✅
+- [x] $INFRA token deployed on Base (Mint Club V2)
+- [x] Bonding curve with $OPENWORK backing
+- [x] Landing page with token trading section
+- [x] Interactive routing demo component
+- [x] Professional hackathon-ready UI
+
+### Phase 3: AgentOrchestrator 🚧
+- [x] Strategy recommendation engine
+- [ ] Auto-delegation using agent's API keys
+- [ ] Parallel task execution with result merging
+- [ ] Escalation flow for complex tasks
+- [ ] `/api/orchestrate` endpoint
+
+### Phase 4: AgentVault (Future)
+- [ ] Multi-wallet connection
+- [ ] Balance tracking across chains
+- [ ] API cost logging
+- [ ] Burn rate analytics
+- [ ] Budget alerts
 
 ---
 
