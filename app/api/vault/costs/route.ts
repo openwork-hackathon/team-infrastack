@@ -1,137 +1,139 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
+import path from 'path';
 
-// AgentVault - Cost Logging Endpoint
-// GET /api/vault/costs - list logged costs
-// POST /api/vault/costs - log a new cost entry
-
+// Cost log entry type
 interface CostEntry {
   id: string;
   timestamp: string;
-  model: string;
+  agentId: string;
   provider: string;
-  tokens: {
-    input: number;
-    output: number;
-  };
-  cost: {
-    amount: number;
-    currency: string;
-  };
-  task?: string;
-  agentId?: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  metadata?: Record<string, unknown>;
 }
 
-// In-memory store (for MVP - would be DB in production)
-const costLog: CostEntry[] = [];
+// In-memory fallback + file persistence
+const DATA_DIR = path.join(process.cwd(), '.data');
+const COSTS_FILE = path.join(DATA_DIR, 'costs.json');
 
-// Model pricing (per 1M tokens)
-const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  'claude-opus-4': { input: 15, output: 75 },
-  'claude-sonnet-4': { input: 3, output: 15 },
-  'gpt-4o': { input: 5, output: 15 },
-  'gpt-4o-mini': { input: 0.15, output: 0.6 },
-  'gemini-2.0-flash': { input: 0.075, output: 0.3 },
-};
-
-function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
-  const pricing = MODEL_PRICING[model] || { input: 1, output: 3 };
-  const inputCost = (inputTokens / 1_000_000) * pricing.input;
-  const outputCost = (outputTokens / 1_000_000) * pricing.output;
-  return inputCost + outputCost;
+async function ensureDataDir() {
+  if (!existsSync(DATA_DIR)) {
+    await mkdir(DATA_DIR, { recursive: true });
+  }
 }
 
+async function loadCosts(): Promise<CostEntry[]> {
+  try {
+    await ensureDataDir();
+    if (existsSync(COSTS_FILE)) {
+      const data = await readFile(COSTS_FILE, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.error('Error loading costs:', err);
+  }
+  return [];
+}
+
+async function saveCosts(costs: CostEntry[]) {
+  await ensureDataDir();
+  await writeFile(COSTS_FILE, JSON.stringify(costs, null, 2));
+}
+
+// GET /api/vault/costs - Retrieve cost logs
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const agentId = searchParams.get('agentId');
-  const limit = parseInt(searchParams.get('limit') || '100');
-  const since = searchParams.get('since');
+  try {
+    const { searchParams } = new URL(request.url);
+    const agentId = searchParams.get('agentId');
+    const provider = searchParams.get('provider');
+    const since = searchParams.get('since'); // ISO timestamp
+    const limit = parseInt(searchParams.get('limit') || '100', 10);
 
-  let filtered = [...costLog];
+    let costs = await loadCosts();
 
-  if (agentId) {
-    filtered = filtered.filter(c => c.agentId === agentId);
+    // Filter by agentId
+    if (agentId) {
+      costs = costs.filter((c) => c.agentId === agentId);
+    }
+
+    // Filter by provider
+    if (provider) {
+      costs = costs.filter((c) => c.provider === provider);
+    }
+
+    // Filter by timestamp
+    if (since) {
+      const sinceDate = new Date(since);
+      costs = costs.filter((c) => new Date(c.timestamp) >= sinceDate);
+    }
+
+    // Sort by timestamp descending (newest first)
+    costs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    // Apply limit
+    costs = costs.slice(0, limit);
+
+    // Calculate totals
+    const totals = costs.reduce(
+      (acc, c) => ({
+        totalCostUsd: acc.totalCostUsd + c.costUsd,
+        totalInputTokens: acc.totalInputTokens + c.inputTokens,
+        totalOutputTokens: acc.totalOutputTokens + c.outputTokens,
+        entryCount: acc.entryCount + 1,
+      }),
+      { totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, entryCount: 0 }
+    );
+
+    return NextResponse.json({
+      costs,
+      totals,
+      filters: { agentId, provider, since, limit },
+    });
+  } catch (error) {
+    console.error('Costs GET error:', error);
+    return NextResponse.json({ error: 'Failed to retrieve costs' }, { status: 500 });
   }
-
-  if (since) {
-    const sinceDate = new Date(since);
-    filtered = filtered.filter(c => new Date(c.timestamp) >= sinceDate);
-  }
-
-  // Calculate aggregates
-  const totalCost = filtered.reduce((sum, c) => sum + c.cost.amount, 0);
-  const totalInputTokens = filtered.reduce((sum, c) => sum + c.tokens.input, 0);
-  const totalOutputTokens = filtered.reduce((sum, c) => sum + c.tokens.output, 0);
-
-  const byModel = filtered.reduce((acc, c) => {
-    acc[c.model] = (acc[c.model] || 0) + c.cost.amount;
-    return acc;
-  }, {} as Record<string, number>);
-
-  return NextResponse.json({
-    entries: filtered.slice(-limit),
-    summary: {
-      totalCost: totalCost.toFixed(6),
-      totalInputTokens,
-      totalOutputTokens,
-      entryCount: filtered.length,
-      byModel,
-    },
-  });
 }
 
+// POST /api/vault/costs - Log a new cost entry
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
-    const { model, inputTokens, outputTokens, task, agentId } = body;
 
-    if (!model || inputTokens === undefined || outputTokens === undefined) {
-      return NextResponse.json(
-        { error: 'Missing required fields: model, inputTokens, outputTokens' },
-        { status: 400 }
-      );
+    // Validate required fields
+    const required = ['agentId', 'provider', 'model', 'inputTokens', 'outputTokens', 'costUsd'];
+    for (const field of required) {
+      if (body[field] === undefined) {
+        return NextResponse.json(
+          { error: `Missing required field: ${field}` },
+          { status: 400 }
+        );
+      }
     }
-
-    const provider = model.includes('claude') ? 'anthropic' 
-      : model.includes('gpt') ? 'openai' 
-      : model.includes('gemini') ? 'google' 
-      : 'unknown';
-
-    const cost = calculateCost(model, inputTokens, outputTokens);
 
     const entry: CostEntry = {
-      id: `cost_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
-      model,
-      provider,
-      tokens: {
-        input: inputTokens,
-        output: outputTokens,
-      },
-      cost: {
-        amount: cost,
-        currency: 'USD',
-      },
-      task,
-      agentId,
+      agentId: body.agentId,
+      provider: body.provider,
+      model: body.model,
+      inputTokens: body.inputTokens,
+      outputTokens: body.outputTokens,
+      costUsd: body.costUsd,
+      metadata: body.metadata,
     };
 
-    costLog.push(entry);
+    const costs = await loadCosts();
+    costs.push(entry);
+    await saveCosts(costs);
 
-    // Keep only last 10000 entries
-    if (costLog.length > 10000) {
-      costLog.shift();
-    }
-
-    return NextResponse.json({
-      success: true,
-      entry,
-      message: `Logged cost: $${cost.toFixed(6)} for ${model}`,
-    });
+    return NextResponse.json({ success: true, entry }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Invalid request body', details: String(error) },
-      { status: 400 }
-    );
+    console.error('Costs POST error:', error);
+    return NextResponse.json({ error: 'Failed to log cost' }, { status: 500 });
   }
 }
