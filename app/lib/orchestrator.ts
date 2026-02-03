@@ -8,6 +8,32 @@ export interface OrchestratorRequest {
     preferredProvider?: string;
     timeout?: number;
   };
+  planOnly?: boolean;
+}
+
+export interface ExecutionPlan {
+  planId: string;           // UUID for tracking
+  strategy: 'direct' | 'delegate' | 'parallel' | 'escalate';
+  tasks: PlanTask[];
+  aggregation?: {
+    method: 'merge' | 'select_best' | 'synthesize';
+    finalModel?: string;
+    finalProvider?: string;
+  };
+  estimatedCost: 'low' | 'medium' | 'high';
+  estimatedTokens: number;
+  createdAt: string;
+}
+
+export interface PlanTask {
+  id: number;
+  task: string;
+  model: string;
+  provider: string;
+  priority: number;
+  dependsOn: number[];      // Task IDs this depends on
+  estimatedTokens: number;
+  systemPrompt?: string;    // Optional system prompt for the task
 }
 
 export interface SubTask {
@@ -52,14 +78,19 @@ export class AgentOrchestrator {
     this.baseUrl = baseUrl;
   }
 
-  async orchestrate(request: OrchestratorRequest): Promise<OrchestratorResponse> {
+  async orchestrate(request: OrchestratorRequest): Promise<OrchestratorResponse | ExecutionPlan> {
     const startTime = Date.now();
     
     try {
       // Step 1: Get routing decision from AgentRouter
       const routingDecision = await this.callAgentRouter(request.task, request.constraints);
       
-      // Step 2: Execute based on strategy
+      // Step 2: Check if plan-only mode is requested
+      if (request.planOnly) {
+        return await this.generatePlan(routingDecision, request.task);
+      }
+      
+      // Step 3: Execute based on strategy
       let result: OrchestratorResponse;
       
       switch (routingDecision.strategy) {
@@ -100,6 +131,56 @@ export class AgentOrchestrator {
         executionTimeMs: Date.now() - startTime
       };
     }
+  }
+
+  async generatePlan(routingDecision: any, task: string): Promise<ExecutionPlan> {
+    const planId = this.generateUUID();
+    const strategy = routingDecision.strategy;
+    const createdAt = new Date().toISOString();
+    
+    let tasks: PlanTask[];
+    let aggregation: ExecutionPlan['aggregation'];
+    let estimatedTokens = 0;
+    
+    switch (strategy) {
+      case 'direct':
+        tasks = this.generateDirectPlan(routingDecision, task);
+        estimatedTokens = this.estimateTokens(task, 1);
+        break;
+      
+      case 'delegate':
+        tasks = this.generateDelegatePlan(routingDecision, task);
+        estimatedTokens = this.estimateTokens(task, 1);
+        break;
+      
+      case 'parallel':
+        tasks = this.generateParallelPlan(routingDecision, task);
+        estimatedTokens = this.estimateTokens(task, tasks.length);
+        aggregation = {
+          method: 'synthesize',
+          finalModel: 'claude-3.5-sonnet',
+          finalProvider: 'anthropic'
+        };
+        break;
+      
+      case 'escalate':
+        tasks = this.generateEscalatePlan(routingDecision, task);
+        estimatedTokens = this.estimateTokens(task, 1);
+        break;
+      
+      default:
+        throw new Error(`Unknown strategy: ${strategy}`);
+    }
+    
+    return {
+      planId,
+      strategy,
+      tasks,
+      aggregation,
+      estimatedCost: routingDecision.estimatedCost || this.calculateEstimatedCost(estimatedTokens),
+      estimatedTokens,
+      createdAt
+    };
   }
 
   private async callAgentRouter(task: string, constraints?: any) {
@@ -365,6 +446,179 @@ export class AgentOrchestrator {
     
     const data = await response.json();
     return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Google API';
+  }
+
+  // Plan generation methods for each strategy
+  private generateDirectPlan(routingDecision: any, task: string): PlanTask[] {
+    const modelConfig = MODEL_PROVIDERS[routingDecision.selectedModel as keyof typeof MODEL_PROVIDERS];
+    
+    return [{
+      id: 1,
+      task: task,
+      model: routingDecision.selectedModel,
+      provider: modelConfig?.provider || 'anthropic',
+      priority: 1,
+      dependsOn: [],
+      estimatedTokens: this.estimateTokens(task, 1),
+      systemPrompt: 'Execute this task directly with the selected model.'
+    }];
+  }
+
+  private generateDelegatePlan(routingDecision: any, task: string): PlanTask[] {
+    const modelConfig = MODEL_PROVIDERS[routingDecision.selectedModel as keyof typeof MODEL_PROVIDERS];
+    
+    return [{
+      id: 1,
+      task: task,
+      model: routingDecision.selectedModel,
+      provider: modelConfig?.provider || 'anthropic',
+      priority: 1,
+      dependsOn: [],
+      estimatedTokens: this.estimateTokens(task, 1),
+      systemPrompt: 'You are a specialized agent. Complete this task with attention to detail and quality.'
+    }];
+  }
+
+  private generateParallelPlan(routingDecision: any, task: string): PlanTask[] {
+    const subtasks = this.breakDownTask(task);
+    const models = this.getModelDistribution(subtasks.length);
+    
+    return subtasks.map((subtask, index) => {
+      const modelConfig = MODEL_PROVIDERS[models[index] as keyof typeof MODEL_PROVIDERS];
+      
+      return {
+        id: index + 1,
+        task: subtask,
+        model: models[index],
+        provider: modelConfig?.provider || 'anthropic',
+        priority: this.calculateTaskPriority(subtask, index),
+        dependsOn: this.calculateDependencies(subtask, index, subtasks),
+        estimatedTokens: this.estimateTokens(subtask, 1),
+        systemPrompt: this.generateSystemPrompt(subtask, task)
+      };
+    });
+  }
+
+  private generateEscalatePlan(routingDecision: any, task: string): PlanTask[] {
+    return [{
+      id: 1,
+      task: `Review and approve: ${task}`,
+      model: 'human-review',
+      provider: 'human',
+      priority: 1,
+      dependsOn: [],
+      estimatedTokens: 0,
+      systemPrompt: 'This task requires human oversight due to complexity or risk factors.'
+    }];
+  }
+
+  // Helper methods for plan generation
+  private generateUUID(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  private estimateTokens(text: string, multiplier: number = 1): number {
+    // Rough estimation: 1 token ≈ 4 characters for English text
+    const baseTokens = Math.ceil(text.length / 4);
+    // Add overhead for prompt structure and response
+    return Math.max((baseTokens + 500) * multiplier, 100);
+  }
+
+  private calculateEstimatedCost(tokens: number): 'low' | 'medium' | 'high' {
+    if (tokens < 2000) return 'low';
+    if (tokens < 10000) return 'medium';
+    return 'high';
+  }
+
+  private getModelDistribution(taskCount: number): string[] {
+    const availableModels = ['claude-3.5-sonnet', 'gpt-4o', 'gemini-1.5-flash', 'claude-3-haiku'];
+    const models: string[] = [];
+    
+    for (let i = 0; i < taskCount; i++) {
+      models.push(availableModels[i % availableModels.length]);
+    }
+    
+    return models;
+  }
+
+  private calculateTaskPriority(subtask: string, index: number): number {
+    // Analysis and design tasks get higher priority
+    if (subtask.toLowerCase().includes('analyze') || 
+        subtask.toLowerCase().includes('design') ||
+        subtask.toLowerCase().includes('plan')) {
+      return 1;
+    }
+    
+    // Implementation tasks get medium priority
+    if (subtask.toLowerCase().includes('implement') || 
+        subtask.toLowerCase().includes('create') ||
+        subtask.toLowerCase().includes('build')) {
+      return 2;
+    }
+    
+    // Testing and refinement tasks get lower priority
+    if (subtask.toLowerCase().includes('test') || 
+        subtask.toLowerCase().includes('optimize') ||
+        subtask.toLowerCase().includes('refine')) {
+      return 3;
+    }
+    
+    return index + 1;
+  }
+
+  private calculateDependencies(subtask: string, index: number, allSubtasks: string[]): number[] {
+    const dependencies: number[] = [];
+    
+    // Test tasks depend on implementation tasks
+    if (subtask.toLowerCase().includes('test') && index > 0) {
+      // Find implementation tasks
+      for (let i = 0; i < index; i++) {
+        if (allSubtasks[i].toLowerCase().includes('implement') ||
+            allSubtasks[i].toLowerCase().includes('create')) {
+          dependencies.push(i + 1);
+        }
+      }
+    }
+    
+    // Optimization tasks depend on core implementation
+    if (subtask.toLowerCase().includes('optimize') && index > 1) {
+      dependencies.push(index - 1); // Depend on previous task
+    }
+    
+    // Integration tasks depend on component tasks
+    if (subtask.toLowerCase().includes('integrate') && index > 0) {
+      dependencies.push(1); // Depend on first task (usually analysis/design)
+    }
+    
+    return dependencies;
+  }
+
+  private generateSystemPrompt(subtask: string, mainTask: string): string {
+    if (subtask.toLowerCase().includes('analyze')) {
+      return `You are a business analyst. Analyze the requirements for: "${mainTask}". Focus on understanding needs, constraints, and success criteria.`;
+    }
+    
+    if (subtask.toLowerCase().includes('design')) {
+      return `You are a system architect. Design the solution for: "${mainTask}". Focus on structure, components, and technical approach.`;
+    }
+    
+    if (subtask.toLowerCase().includes('implement') || subtask.toLowerCase().includes('create')) {
+      return `You are a software developer. Implement this component: "${subtask}". Write clean, well-documented code with proper error handling.`;
+    }
+    
+    if (subtask.toLowerCase().includes('test')) {
+      return `You are a QA engineer. Test and validate: "${subtask}". Focus on functionality, edge cases, and user experience.`;
+    }
+    
+    if (subtask.toLowerCase().includes('optimize')) {
+      return `You are a performance engineer. Optimize: "${subtask}". Focus on speed, efficiency, and resource usage.`;
+    }
+    
+    return `You are a specialized agent. Complete this subtask as part of the larger goal: "${mainTask}". Focus on quality and integration with other components.`;
   }
 
   // Helper methods for task management

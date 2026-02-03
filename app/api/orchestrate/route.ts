@@ -26,12 +26,17 @@ export async function GET() {
       endpoint: "POST /api/orchestrate",
       body: {
         task: "string (required) - The task to orchestrate",
+        planOnly: "boolean (optional) - Return execution plan without execution",
         constraints: {
           maxCost: "low | medium | high (optional)",
           preferredProvider: "string (optional)",
           timeout: "number (optional)"
         }
       }
+    },
+    modes: {
+      execution: "planOnly: false (default) - Execute the task and return results",
+      planning: "planOnly: true - Generate execution plan for local execution"
     }
   });
 }
@@ -52,15 +57,20 @@ export async function POST(request: NextRequest) {
     // Prepare orchestrator request
     const orchestratorRequest: OrchestratorRequest = {
       task: body.task,
-      constraints: body.constraints || {}
+      constraints: body.constraints || {},
+      planOnly: body.planOnly || false
     };
     
     console.log('🎯 Orchestrating task:', orchestratorRequest.task);
     
-    // Execute orchestration
+    // Execute orchestration or plan generation
     const result = await orchestrator.orchestrate(orchestratorRequest);
     
-    console.log(`✅ Orchestration complete - Strategy: ${result.strategy}, Time: ${result.executionTimeMs}ms`);
+    if (body.planOnly) {
+      console.log(`📋 Plan generated - Strategy: ${result.strategy}, Tasks: ${result.tasks?.length || 0}`);
+    } else {
+      console.log(`✅ Orchestration complete - Strategy: ${result.strategy}, Time: ${(result as any).executionTimeMs}ms`);
+    }
     
     return NextResponse.json(result);
     
@@ -111,6 +121,10 @@ function validateRequest(body: any): string | null {
     }
   }
   
+  if (body.planOnly !== undefined && typeof body.planOnly !== 'boolean') {
+    return 'planOnly must be a boolean';
+  }
+  
   return null;
 }
 
@@ -145,5 +159,24 @@ curl -X POST http://localhost:3000/api/orchestrate \
 curl -X POST http://localhost:3000/api/orchestrate \
   -H "Content-Type: application/json" \
   -d '{"task": "Compare React, Vue, and Angular frameworks for enterprise applications"}'
+
+# Plan-Only Mode Examples
+
+# Get execution plan without running (for local agent execution)
+curl -X POST http://localhost:3000/api/orchestrate \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Build a landing page", "planOnly": true}'
+
+# Complex task plan generation
+curl -X POST http://localhost:3000/api/orchestrate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task": "Create a full-stack todo application with authentication",
+    "planOnly": true,
+    "constraints": {
+      "maxCost": "medium",
+      "preferredProvider": "anthropic"
+    }
+  }'
 
 */
