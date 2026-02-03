@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:router": "node test-agent-router.js",
+    "test:orchestrator": "node test-orchestrator.js",
+    "demo:router": "node demo-test.js",
+    "demo:orchestrator": "node demo-orchestrator.js"
   },
   "dependencies": {
     "next": "16.1.6",
