@@ -77,6 +77,18 @@ Automatically routes requests to the optimal model based on:
 
 **One API call → optimal model selected.**
 
+### AgentOrchestrator — Intelligent Task Execution
+Production-ready orchestration layer that executes routing recommendations:
+- **4 Execution Strategies:**
+  - **Direct** — Return instructions for simple tasks (caller executes)
+  - **Delegate** — Single specialized sub-agent handles focused work
+  - **Parallel** — Multiple concurrent sub-agents tackle complex projects
+  - **Escalate** — Human review required for high-risk/sensitive tasks
+- **Plan-Only Mode** — Generate execution plans without running them (security-first approach)
+- **Real LLM Integration** — Makes actual API calls to Anthropic, OpenAI, Google
+- **Cost & Token Tracking** — Precise estimation and monitoring across all strategies
+- **Smart Task Decomposition** — Automatic breakdown for parallel execution
+
 ### AgentVault — Treasury Management (Coming Soon)
 Financial infrastructure for agents:
 - Multi-wallet tracking
@@ -107,6 +119,55 @@ curl -X POST https://team-infrastack.vercel.app/api/route \
 }
 ```
 
+### Orchestrate Execution (Plan-Only Mode)
+```bash
+curl -X POST https://team-infrastack.vercel.app/api/orchestrate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task": "Build a landing page with token section",
+    "planOnly": true,
+    "constraints": {
+      "maxCost": "medium",
+      "preferredProvider": "anthropic"
+    }
+  }'
+```
+
+### Orchestration Response
+```json
+{
+  "planId": "550e8400-e29b-41d4-a716-446655440000",
+  "strategy": "parallel",
+  "tasks": [
+    {
+      "id": 1,
+      "task": "Create responsive HTML structure",
+      "model": "claude-3.5-sonnet",
+      "provider": "anthropic",
+      "priority": 1,
+      "dependsOn": [],
+      "estimatedTokens": 1500
+    },
+    {
+      "id": 2,
+      "task": "Add token section with pricing",
+      "model": "gpt-4o",
+      "provider": "openai", 
+      "priority": 2,
+      "dependsOn": [1],
+      "estimatedTokens": 2000
+    }
+  ],
+  "aggregation": {
+    "method": "merge",
+    "description": "Combine HTML structure with token section"
+  },
+  "estimatedCost": "medium",
+  "estimatedTokens": 3500,
+  "createdAt": "2026-02-03T04:30:00Z"
+}
+```
+
 ---
 
 ## 📋 Roadmap
@@ -127,11 +188,14 @@ curl -X POST https://team-infrastack.vercel.app/api/route \
 - [x] Professional hackathon-ready UI
 
 ### Phase 3: AgentOrchestrator ✅
-- [x] Strategy recommendation engine
-- [x] Smart execution strategies (Direct, Delegate, Parallel, Escalate)
-- [x] Mock sub-agent spawning with task decomposition
-- [x] Parallel task execution with result merging
-- [x] `/api/orchestrate` endpoint
+- [x] **4 Core Strategies:** Direct, Delegate, Parallel, Escalate
+- [x] **Plan-Only Mode** for secure task planning without execution
+- [x] **Real LLM Integration** with Anthropic, OpenAI, Google APIs
+- [x] **Cost Estimation & Token Tracking** per task and strategy
+- [x] **Smart Task Decomposition** for parallel execution
+- [x] **Real-time Status Updates** during orchestration
+- [x] **Comprehensive Test Suite** with validation
+- [x] `/api/orchestrate` endpoint with full validation
 
 ### Phase 4: AgentVault ⚡ IN PROGRESS
 - [x] Wallet balance API (`/api/vault/balance`)
@@ -158,7 +222,30 @@ curl -X POST https://team-infrastack.vercel.app/api/route \
 git clone https://github.com/openwork-hackathon/team-infrastack.git
 cd team-infrastack
 npm install
+
+# Configure API keys for orchestrator (optional)
+cp .env.example .env.local
+# Add your API keys to .env.local:
+# ANTHROPIC_API_KEY=your_key_here
+# OPENAI_API_KEY=your_key_here
+# GOOGLE_API_KEY=your_key_here
+
 npm run dev
+```
+
+### Test Commands
+```bash
+# Test AgentRouter
+npm run test:router
+
+# Test AgentOrchestrator 
+npm run test:orchestrator
+
+# Test Plan-Only Mode
+node test-plan-mode.js
+
+# Interactive Demo
+node demo-orchestrator.js
 ```
 
 ### Branch Strategy
