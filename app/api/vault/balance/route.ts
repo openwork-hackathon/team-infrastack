@@ -23,6 +23,11 @@ const TOKENS: Record<string, { address: string; symbol: string; decimals: number
     symbol: 'USDC',
     decimals: 6,
   },
+  INFRA: {
+    address: '0x0000000000000000000000000000000000000000', // Placeholder - replace with actual INFRA token address
+    symbol: 'INFRA',
+    decimals: 18,
+  },
 };
 
 export async function GET(request: NextRequest) {

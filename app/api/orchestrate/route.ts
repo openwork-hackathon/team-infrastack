@@ -2,7 +2,7 @@
 // POST /api/orchestrate - Auto-execute tasks based on AgentRouter recommendations
 
 import { NextRequest, NextResponse } from 'next/server';
-import { orchestrator, OrchestratorRequest } from '../../lib/orchestrator';
+import { orchestrator, OrchestratorRequest, ExecutionPlan } from '../../lib/orchestrator';
 
 export async function GET() {
   return NextResponse.json({
@@ -67,7 +67,8 @@ export async function POST(request: NextRequest) {
     const result = await orchestrator.orchestrate(orchestratorRequest);
     
     if (body.planOnly) {
-      console.log(`📋 Plan generated - Strategy: ${result.strategy}, Tasks: ${result.tasks?.length || 0}`);
+      const plan = result as ExecutionPlan;
+      console.log(`📋 Plan generated - Strategy: ${result.strategy}, Tasks: ${plan.tasks?.length || 0}`);
     } else {
       console.log(`✅ Orchestration complete - Strategy: ${result.strategy}, Time: ${(result as any).executionTimeMs}ms`);
     }

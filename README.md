@@ -170,6 +170,144 @@ curl -X POST https://team-infrastack.vercel.app/api/orchestrate \
 
 ---
 
+## 🏦 AgentVault Enterprise APIs
+
+### Multi-Wallet Management
+
+```bash
+# List all tracked wallets
+curl https://team-infrastack.vercel.app/api/vault/wallets
+
+# Add new wallet
+curl -X POST https://team-infrastack.vercel.app/api/vault/wallets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Trading Wallet",
+    "address": "0x1234...5678",
+    "network": "base"
+  }'
+
+# Remove wallet
+curl -X DELETE "https://team-infrastack.vercel.app/api/vault/wallets?id=wallet-123"
+```
+
+### Budget Management
+
+```bash
+# Get all budgets with current status
+curl https://team-infrastack.vercel.app/api/vault/budgets
+
+# Set daily budget limit
+curl -X POST https://team-infrastack.vercel.app/api/vault/budgets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Daily Operations",
+    "type": "daily",
+    "limit": 100.00,
+    "walletId": "wallet-123"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "budget-456",
+    "name": "Daily Operations",
+    "type": "daily",
+    "limit": 100.00,
+    "spent": 73.50,
+    "remaining": 26.50,
+    "percentageUsed": 73.5,
+    "isActive": true
+  }
+}
+```
+
+### Budget Alerts
+
+```bash
+# Create budget alert
+curl -X POST https://team-infrastack.vercel.app/api/vault/alerts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "75% Warning",
+    "budgetId": "budget-456", 
+    "thresholdPercentage": 75,
+    "webhookUrl": "https://hooks.slack.com/services/..."
+  }'
+
+# List all alerts
+curl https://team-infrastack.vercel.app/api/vault/alerts
+```
+
+### Audit Log
+
+```bash
+# Get audit log with filters
+curl "https://team-infrastack.vercel.app/api/vault/audit?page=1&limit=50&provider=anthropic&includeStats=true"
+
+# Export to CSV
+curl "https://team-infrastack.vercel.app/api/vault/audit?export=csv" > audit-log.csv
+```
+
+**Response includes:**
+- Paginated API call history
+- Filters by date range, model, provider, wallet
+- Cost and token usage per call
+- Success rates and error statistics
+
+### Spending Forecast
+
+```bash
+# Get spending projections
+curl https://team-infrastack.vercel.app/api/vault/forecast
+
+# Get forecast with historical data
+curl "https://team-infrastack.vercel.app/api/vault/forecast?includeHistorical=true&walletId=wallet-123"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "daily": {
+      "current": 23.50,
+      "projected": 27.30,
+      "trend": "increasing"
+    },
+    "weekly": {
+      "current": 156.80,
+      "projected": 191.10,
+      "trend": "increasing"
+    },
+    "monthly": {
+      "current": 678.90,
+      "projected": 819.00,
+      "trend": "stable"
+    },
+    "runway": {
+      "days": 36,
+      "estimate": "5 weeks",
+      "confidence": "high"
+    },
+    "burnRate": {
+      "dailyAverage": 22.63,
+      "weeklyAverage": 3.23,
+      "monthlyAverage": 0.75
+    }
+  },
+  "insights": [
+    "📈 Daily spending is trending upward",
+    "⚠️ Runway is less than 30 days based on current burn rate"
+  ]
+}
+```
+
+---
+
 ## 📋 Roadmap
 
 ### Phase 1: AgentRouter MVP ✅
@@ -197,13 +335,17 @@ curl -X POST https://team-infrastack.vercel.app/api/orchestrate \
 - ✅ **Comprehensive Test Suite** with validation
 - ✅ `/api/orchestrate` endpoint with full validation
 
-### Phase 4: AgentVault ⚡ IN PROGRESS
+### Phase 4: AgentVault Enterprise Features ✅
+- ✅ **Multi-Wallet Management** (`/api/vault/wallets`)
+- ✅ **Budget Management** (`/api/vault/budgets`) 
+- ✅ **Budget Alerts** (`/api/vault/alerts`)
+- ✅ **Audit Logging** (`/api/vault/audit`)
+- ✅ **Spending Forecasts** (`/api/vault/forecast`)
 - ✅ Wallet balance API (`/api/vault/balance`)
 - ✅ Cost logging API (`/api/vault/costs`)
 - ✅ ETH + token tracking on Base (OPENWORK, USDC)
 - ⬜ Frontend integration
 - ⬜ Burn rate analytics dashboard
-- ⬜ Budget alerts
 
 ---
 
