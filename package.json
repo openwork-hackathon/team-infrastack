@@ -8,9 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "test:router": "node test-agent-router.js",
-    "test:orchestrator": "node test-orchestrator.js",
+    "test:orchestrator": "node test-orchestrator.js", 
+    "test:real": "node test-real-orchestrator.js",
     "demo:router": "node demo-test.js",
-    "demo:orchestrator": "node demo-orchestrator.js"
+    "demo:orchestrator": "node demo-orchestrator.js",
+    "quick": "node quick-test.js"
   },
   "dependencies": {
     "next": "16.1.6",

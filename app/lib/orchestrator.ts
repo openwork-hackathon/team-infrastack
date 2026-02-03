@@ -28,14 +28,22 @@ export interface OrchestratorResponse {
   routingDecision?: any; // Original AgentRouter response
 }
 
-// Mock sub-agent responses for demo
-const MOCK_RESPONSES = [
-  "Successfully completed the task with high quality output.",
-  "Task completed efficiently using optimized approach.",
-  "Generated comprehensive solution meeting all requirements.",
-  "Delivered results with best practices implementation.",
-  "Completed task with performance optimizations applied."
-];
+// Model provider configurations
+const MODEL_PROVIDERS = {
+  'claude-3-opus': { provider: 'anthropic', apiModel: 'claude-3-opus-20240229' },
+  'claude-3.5-sonnet': { provider: 'anthropic', apiModel: 'claude-3-5-sonnet-20241022' },
+  'claude-3-haiku': { provider: 'anthropic', apiModel: 'claude-3-haiku-20240307' },
+  'claude-sonnet-4-20250514': { provider: 'anthropic', apiModel: 'claude-3-5-sonnet-20241022' },
+  'gpt-4-turbo': { provider: 'openai', apiModel: 'gpt-4-turbo' },
+  'gpt-4o': { provider: 'openai', apiModel: 'gpt-4o' },
+  'gpt-4o-mini': { provider: 'openai', apiModel: 'gpt-4o-mini' },
+  'gpt-3.5-turbo': { provider: 'openai', apiModel: 'gpt-3.5-turbo' },
+  'o1-preview': { provider: 'openai', apiModel: 'o1-preview' },
+  'o1-mini': { provider: 'openai', apiModel: 'o1-mini' },
+  'gemini-1.5-pro': { provider: 'google', apiModel: 'gemini-1.5-pro' },
+  'gemini-1.5-flash': { provider: 'google', apiModel: 'gemini-1.5-flash' },
+  'gemini-pro-vision': { provider: 'google', apiModel: 'gemini-pro-vision' }
+};
 
 export class AgentOrchestrator {
   private baseUrl: string;
@@ -129,7 +137,7 @@ export class AgentOrchestrator {
   }
 
   private async handleDelegate(routingDecision: any, task: string): Promise<OrchestratorResponse> {
-    // Delegate strategy: Spawn single sub-agent with recommended model
+    // Delegate strategy: Make real LLM API call with recommended model
     const subTask: SubTask = {
       id: 1,
       task: task,
@@ -137,24 +145,42 @@ export class AgentOrchestrator {
       status: 'pending'
     };
     
-    // Mock sub-agent spawning with delay
-    subTask.status = 'running';
-    await this.simulateSubAgent(800); // 800ms delay
-    
-    subTask.status = 'complete';
-    subTask.result = this.getRandomMockResponse();
-    
-    return {
-      strategy: 'delegate',
-      subTasks: [subTask],
-      result: `Delegated to ${routingDecision.selectedModel}: ${subTask.result}`,
-      totalCost: routingDecision.estimatedCost || 'medium',
-      executionTimeMs: 0
-    };
+    try {
+      subTask.status = 'running';
+      console.log(`🤖 Calling ${routingDecision.selectedModel} for task: ${task.substring(0, 100)}...`);
+      
+      // Make real LLM API call
+      const llmResponse = await this.callLLMModel(routingDecision.selectedModel, task);
+      
+      subTask.status = 'complete';
+      subTask.result = llmResponse;
+      
+      return {
+        strategy: 'delegate',
+        subTasks: [subTask],
+        result: `Delegated to ${routingDecision.selectedModel}: ${llmResponse}`,
+        totalCost: routingDecision.estimatedCost || 'medium',
+        executionTimeMs: 0
+      };
+      
+    } catch (error) {
+      console.error(`❌ LLM call failed for ${routingDecision.selectedModel}:`, error);
+      
+      subTask.status = 'error';
+      subTask.error = error instanceof Error ? error.message : 'LLM API call failed';
+      
+      return {
+        strategy: 'delegate',
+        subTasks: [subTask],
+        result: `Failed to delegate to ${routingDecision.selectedModel}: ${subTask.error}`,
+        totalCost: routingDecision.estimatedCost || 'medium',
+        executionTimeMs: 0
+      };
+    }
   }
 
   private async handleParallel(routingDecision: any, task: string): Promise<OrchestratorResponse> {
-    // Parallel strategy: Break down task and spawn multiple sub-agents
+    // Parallel strategy: Break down task and spawn multiple real sub-agents
     const subTasks = this.breakDownTask(task);
     const parallelTasks: SubTask[] = subTasks.map((subTask, index) => ({
       id: index + 1,
@@ -163,12 +189,25 @@ export class AgentOrchestrator {
       status: 'pending'
     }));
     
-    // Execute all sub-tasks in parallel (mock)
-    const promises = parallelTasks.map(async (subTask, index) => {
-      subTask.status = 'running';
-      await this.simulateSubAgent(500 + index * 100); // Staggered delays
-      subTask.status = 'complete';
-      subTask.result = this.getRandomMockResponse();
+    console.log(`⚡ Executing ${parallelTasks.length} sub-tasks in parallel...`);
+    
+    // Execute all sub-tasks in parallel with real LLM calls
+    const promises = parallelTasks.map(async (subTask) => {
+      try {
+        subTask.status = 'running';
+        console.log(`🤖 Calling ${subTask.model} for: ${subTask.task.substring(0, 60)}...`);
+        
+        const llmResponse = await this.callLLMModel(subTask.model, subTask.task);
+        
+        subTask.status = 'complete';
+        subTask.result = llmResponse;
+        
+      } catch (error) {
+        console.error(`❌ Sub-task ${subTask.id} failed:`, error);
+        subTask.status = 'error';
+        subTask.error = error instanceof Error ? error.message : 'LLM API call failed';
+      }
+      
       return subTask;
     });
     
@@ -203,7 +242,132 @@ export class AgentOrchestrator {
     };
   }
 
-  // Helper methods for mock implementation
+  // Real LLM API call implementation
+  private async callLLMModel(modelName: string, task: string): Promise<string> {
+    const modelConfig = MODEL_PROVIDERS[modelName as keyof typeof MODEL_PROVIDERS];
+    
+    if (!modelConfig) {
+      throw new Error(`Unsupported model: ${modelName}`);
+    }
+    
+    console.log(`🔌 Making ${modelConfig.provider} API call to ${modelConfig.apiModel}...`);
+    
+    switch (modelConfig.provider) {
+      case 'anthropic':
+        return this.callAnthropicAPI(modelConfig.apiModel, task);
+      case 'openai':
+        return this.callOpenAIAPI(modelConfig.apiModel, task);
+      case 'google':
+        return this.callGoogleAPI(modelConfig.apiModel, task);
+      default:
+        throw new Error(`Provider ${modelConfig.provider} not implemented`);
+    }
+  }
+  
+  private async callAnthropicAPI(model: string, task: string): Promise<string> {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY not found in environment variables');
+    }
+    
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: model,
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'user',
+            content: task
+          }
+        ]
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Anthropic API error (${response.status}): ${error}`);
+    }
+    
+    const data = await response.json();
+    return data.content?.[0]?.text || 'No response from Anthropic API';
+  }
+  
+  private async callOpenAIAPI(model: string, task: string): Promise<string> {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY not found in environment variables');
+    }
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: model,
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'user',
+            content: task
+          }
+        ]
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`OpenAI API error (${response.status}): ${error}`);
+    }
+    
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || 'No response from OpenAI API';
+  }
+  
+  private async callGoogleAPI(model: string, task: string): Promise<string> {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      throw new Error('GOOGLE_API_KEY not found in environment variables');
+    }
+    
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: task
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          maxOutputTokens: 4000
+        }
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Google API error (${response.status}): ${error}`);
+    }
+    
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Google API';
+  }
+
+  // Helper methods for task management
   private breakDownTask(task: string): string[] {
     // Simple task breakdown logic for demo
     if (task.toLowerCase().includes('landing page')) {
@@ -241,6 +405,12 @@ export class AgentOrchestrator {
 
   private mergeResults(subTasks: SubTask[]): string {
     const completedTasks = subTasks.filter(t => t.status === 'complete');
+    const errorTasks = subTasks.filter(t => t.status === 'error');
+    
+    if (errorTasks.length > 0) {
+      return `Completed ${completedTasks.length}/${subTasks.length} subtasks. ${errorTasks.length} tasks failed but proceeding with available results.`;
+    }
+    
     return `Successfully completed ${completedTasks.length}/${subTasks.length} subtasks. All components integrated and delivered.`;
   }
 
@@ -250,14 +420,6 @@ export class AgentOrchestrator {
       return baseCost === 'low' ? 'medium' : 'high';
     }
     return 'high';
-  }
-
-  private getRandomMockResponse(): string {
-    return MOCK_RESPONSES[Math.floor(Math.random() * MOCK_RESPONSES.length)];
-  }
-
-  private async simulateSubAgent(delayMs: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, delayMs));
   }
 }
 

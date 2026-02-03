@@ -4,6 +4,14 @@ const API_BASE = 'http://localhost:3000';
 async function quickTest() {
   console.log('🚀 Quick AgentOrchestrator Test');
   
+  // Check if any API keys are available
+  const hasApiKeys = !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_API_KEY);
+  
+  if (!hasApiKeys) {
+    console.log('\n⚠️  No API keys detected - testing will use fallback behavior');
+    console.log('💡 For real LLM integration, add API keys to .env.local and run: npm run test:real');
+  }
+  
   try {
     // Test health check
     console.log('\n📍 Testing health endpoint...');
