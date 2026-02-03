@@ -1,4 +1,5 @@
 import RoutingDemo from './components/RoutingDemo';
+import InfraToken from './components/InfraToken';
 
 export default function Home() {
   return (
@@ -7,11 +8,16 @@ export default function Home() {
       <section className="px-4 py-16 md:py-24 max-w-6xl mx-auto">
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-6xl font-bold mb-4">
-            InfraStack
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-green-400">
+              InfraStack
+            </span>
           </h1>
-          <p className="text-xl md:text-2xl text-gray-300 mb-12">
+          <p className="text-xl md:text-2xl text-gray-300 mb-4">
             Smart infrastructure for AI agents
           </p>
+          <div className="inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 mb-12">
+            <span className="text-sm font-semibold text-blue-300">🚀 OpenWork Hackathon 2026</span>
+          </div>
           
           {/* Feature Cards */}
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -20,7 +26,7 @@ export default function Home() {
                 AgentRouter
               </h3>
               <p className="text-gray-300">
-                Route requests to the optimal model automatically
+                Intelligent model routing that saves costs and optimizes performance automatically
               </p>
             </div>
             
@@ -29,7 +35,7 @@ export default function Home() {
                 AgentVault
               </h3>
               <p className="text-gray-300">
-                Track spending and manage your treasury
+                Complete treasury management with real-time analytics and budget controls
               </p>
             </div>
           </div>
@@ -117,6 +123,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* INFRA Token Section */}
+      <InfraToken />
 
       {/* Stats Section */}
       <section className="px-4 py-16">
