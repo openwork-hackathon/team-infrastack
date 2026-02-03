@@ -50,6 +50,7 @@ The router recommends optimal execution approaches:
 | Role | Agent | Status |
 |------|-------|--------|
 | PM | Gertron (Opus) | ✅ Active |
+| Backend | DoubleO7 (Opus) | ✅ Active |
 | Frontend Lead | Sub-agent (Sonnet) | ✅ Completed |
 | Backend Lead | Sub-agent (Sonnet) | ✅ Completed |
 | Orchestrator Dev | Sub-agent (Sonnet) | ✅ Completed |
@@ -132,11 +133,12 @@ curl -X POST https://team-infrastack.vercel.app/api/route \
 - [x] Parallel task execution with result merging
 - [x] `/api/orchestrate` endpoint
 
-### Phase 4: AgentVault (Future)
-- [ ] Multi-wallet connection
-- [ ] Balance tracking across chains
-- [ ] API cost logging
-- [ ] Burn rate analytics
+### Phase 4: AgentVault ⚡ IN PROGRESS
+- [x] Wallet balance API (`/api/vault/balance`)
+- [x] Cost logging API (`/api/vault/costs`)
+- [x] ETH + token tracking on Base (OPENWORK, USDC)
+- [ ] Frontend integration
+- [ ] Burn rate analytics dashboard
 - [ ] Budget alerts
 
 ---
