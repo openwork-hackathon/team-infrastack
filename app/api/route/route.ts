@@ -1,59 +1,241 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Model registry with hardcoded models for MVP
+// Model registry with 21 models across 6 providers
 interface Model {
   id: string;
   complexity: number;
   cost: 'low' | 'medium' | 'high';
-  provider: 'anthropic' | 'openai' | 'google';
+  provider: 'anthropic' | 'openai' | 'google' | 'meta' | 'mistral' | 'cohere';
+  specializations: Array<'code' | 'vision' | 'reasoning' | 'speed' | 'general'>;
+  contextWindow: number; // in tokens
+  description: string;
 }
 
 const MODEL_REGISTRY: Model[] = [
+  // Anthropic Models
   {
-    id: 'claude-opus-4',
+    id: 'claude-3-opus',
     complexity: 5,
     cost: 'high',
-    provider: 'anthropic'
+    provider: 'anthropic',
+    specializations: ['reasoning', 'general'],
+    contextWindow: 200000,
+    description: 'Most capable model for complex reasoning and analysis'
   },
   {
-    id: 'claude-sonnet-4',
-    complexity: 3,
+    id: 'claude-3.5-sonnet',
+    complexity: 4,
     cost: 'medium',
-    provider: 'anthropic'
+    provider: 'anthropic',
+    specializations: ['code', 'reasoning', 'general'],
+    contextWindow: 200000,
+    description: 'Excellent balance of capability and cost for coding tasks'
+  },
+  {
+    id: 'claude-3-haiku',
+    complexity: 2,
+    cost: 'low',
+    provider: 'anthropic',
+    specializations: ['speed', 'general'],
+    contextWindow: 200000,
+    description: 'Fast and efficient for simple tasks'
+  },
+  
+  // OpenAI Models
+  {
+    id: 'gpt-4-turbo',
+    complexity: 5,
+    cost: 'high',
+    provider: 'openai',
+    specializations: ['reasoning', 'vision', 'general'],
+    contextWindow: 128000,
+    description: 'Advanced reasoning with vision capabilities'
   },
   {
     id: 'gpt-4o',
     complexity: 4,
     cost: 'high',
-    provider: 'openai'
+    provider: 'openai',
+    specializations: ['general', 'vision'],
+    contextWindow: 128000,
+    description: 'Optimized GPT-4 with multimodal capabilities'
   },
   {
     id: 'gpt-4o-mini',
     complexity: 2,
     cost: 'low',
-    provider: 'openai'
+    provider: 'openai',
+    specializations: ['speed', 'general'],
+    contextWindow: 128000,
+    description: 'Cost-effective version of GPT-4o'
   },
   {
-    id: 'gemini-2.0-flash',
+    id: 'gpt-3.5-turbo',
+    complexity: 3,
+    cost: 'low',
+    provider: 'openai',
+    specializations: ['speed', 'general'],
+    contextWindow: 16385,
+    description: 'Fast and reliable for general tasks'
+  },
+  {
+    id: 'o1-preview',
+    complexity: 5,
+    cost: 'high',
+    provider: 'openai',
+    specializations: ['reasoning'],
+    contextWindow: 128000,
+    description: 'Advanced reasoning model for complex problem solving'
+  },
+  {
+    id: 'o1-mini',
+    complexity: 3,
+    cost: 'medium',
+    provider: 'openai',
+    specializations: ['reasoning'],
+    contextWindow: 128000,
+    description: 'Efficient reasoning model for medium complexity tasks'
+  },
+  
+  // Google Models
+  {
+    id: 'gemini-1.5-pro',
+    complexity: 4,
+    cost: 'medium',
+    provider: 'google',
+    specializations: ['general', 'vision'],
+    contextWindow: 1000000,
+    description: 'High-capacity model with massive context window'
+  },
+  {
+    id: 'gemini-1.5-flash',
     complexity: 2,
     cost: 'low',
-    provider: 'google'
+    provider: 'google',
+    specializations: ['speed', 'general'],
+    contextWindow: 1000000,
+    description: 'Fast model with large context window'
+  },
+  {
+    id: 'gemini-pro-vision',
+    complexity: 3,
+    cost: 'medium',
+    provider: 'google',
+    specializations: ['vision'],
+    contextWindow: 32000,
+    description: 'Specialized for image analysis and vision tasks'
+  },
+  
+  // Meta Models
+  {
+    id: 'llama-3.1-70b',
+    complexity: 4,
+    cost: 'medium',
+    provider: 'meta',
+    specializations: ['general', 'code'],
+    contextWindow: 128000,
+    description: 'Open-source model with strong performance'
+  },
+  {
+    id: 'llama-3.1-8b',
+    complexity: 2,
+    cost: 'low',
+    provider: 'meta',
+    specializations: ['speed', 'general'],
+    contextWindow: 128000,
+    description: 'Efficient open-source model for basic tasks'
+  },
+  {
+    id: 'code-llama-34b',
+    complexity: 3,
+    cost: 'medium',
+    provider: 'meta',
+    specializations: ['code'],
+    contextWindow: 16384,
+    description: 'Specialized for code generation and analysis'
+  },
+  
+  // Mistral Models
+  {
+    id: 'mistral-large',
+    complexity: 4,
+    cost: 'high',
+    provider: 'mistral',
+    specializations: ['reasoning', 'general'],
+    contextWindow: 32000,
+    description: 'High-performance European model'
+  },
+  {
+    id: 'mistral-medium',
+    complexity: 3,
+    cost: 'medium',
+    provider: 'mistral',
+    specializations: ['general'],
+    contextWindow: 32000,
+    description: 'Balanced performance and cost'
+  },
+  {
+    id: 'mistral-small',
+    complexity: 2,
+    cost: 'low',
+    provider: 'mistral',
+    specializations: ['speed', 'general'],
+    contextWindow: 32000,
+    description: 'Fast and cost-effective'
+  },
+  {
+    id: 'codestral',
+    complexity: 3,
+    cost: 'medium',
+    provider: 'mistral',
+    specializations: ['code'],
+    contextWindow: 32000,
+    description: 'Specialized coding model from Mistral'
+  },
+  
+  // Cohere Models
+  {
+    id: 'command-r-plus',
+    complexity: 4,
+    cost: 'medium',
+    provider: 'cohere',
+    specializations: ['reasoning', 'general'],
+    contextWindow: 128000,
+    description: 'Advanced reasoning and generation capabilities'
+  },
+  {
+    id: 'command-r',
+    complexity: 3,
+    cost: 'low',
+    provider: 'cohere',
+    specializations: ['general'],
+    contextWindow: 128000,
+    description: 'Reliable general-purpose model'
   }
 ];
 
 // Keywords that indicate different complexity levels
 const COMPLEXITY_KEYWORDS = {
-  high: ['analyze', 'complex', 'detailed', 'comprehensive', 'research', 'architecture', 'algorithm', 'optimization'],
-  medium: ['code', 'implement', 'debug', 'review', 'design', 'plan', 'calculate'],
-  low: ['simple', 'basic', 'quick', 'summarize', 'list', 'hello', 'what', 'how']
+  high: ['analyze', 'complex', 'detailed', 'comprehensive', 'research', 'architecture', 'algorithm', 'optimization', 'reasoning', 'theorem', 'proof', 'mathematical'],
+  medium: ['code', 'implement', 'debug', 'review', 'design', 'plan', 'calculate', 'refactor', 'test', 'deploy'],
+  low: ['simple', 'basic', 'quick', 'summarize', 'list', 'hello', 'what', 'how', 'translate', 'format']
 };
 
 // Task type detection keywords (as specified in requirements)
 const TASK_TYPE_KEYWORDS = {
-  execution: ['build', 'create', 'write', 'implement', 'fix', 'deploy'],
-  research: ['find', 'search', 'compare', 'analyze', 'investigate'],
-  question: ['what', 'why', 'how', 'explain', 'is it'],
-  creative: ['design', 'brainstorm', 'imagine', 'story']
+  execution: ['build', 'create', 'write', 'implement', 'fix', 'deploy', 'generate', 'make', 'develop'],
+  research: ['find', 'search', 'compare', 'analyze', 'investigate', 'explore', 'discover', 'lookup'],
+  question: ['what', 'why', 'how', 'explain', 'is it', 'tell me', 'describe', 'define'],
+  creative: ['design', 'brainstorm', 'imagine', 'story', 'creative', 'artistic', 'innovative', 'invent']
+};
+
+// Specialized task detection keywords
+const SPECIALIZATION_KEYWORDS = {
+  code: ['code', 'programming', 'function', 'class', 'variable', 'algorithm', 'debug', 'refactor', 'api', 'database', 'sql', 'javascript', 'python', 'react', 'nodejs', 'git', 'repository'],
+  vision: ['image', 'photo', 'picture', 'visual', 'analyze image', 'describe image', 'ocr', 'chart', 'graph', 'diagram', 'screenshot', 'drawing'],
+  reasoning: ['solve', 'logic', 'reasoning', 'mathematics', 'calculation', 'proof', 'theorem', 'problem solving', 'step by step', 'chain of thought'],
+  speed: ['quick', 'fast', 'simple', 'brief', 'short', 'summarize', 'list'],
+  general: ['general', 'overall', 'broad', 'comprehensive']
 };
 
 // Parallelization indicators
@@ -67,6 +249,63 @@ const TECHNICAL_TERMS = [
   'kubernetes', 'aws', 'cloud', 'microservice', 'authentication', 'encryption',
   'blockchain', 'ml', 'ai', 'neural', 'algorithm', 'json', 'rest', 'graphql'
 ];
+
+// Specialization analyzer function
+function analyzeSpecializations(prompt: string): {
+  required: Array<'code' | 'vision' | 'reasoning' | 'speed' | 'general'>;
+  scores: Record<string, number>;
+} {
+  const lowercasePrompt = prompt.toLowerCase();
+  const scores: Record<string, number> = {
+    code: 0,
+    vision: 0,
+    reasoning: 0,
+    speed: 0,
+    general: 0
+  };
+  
+  // Count keywords for each specialization
+  Object.entries(SPECIALIZATION_KEYWORDS).forEach(([spec, keywords]) => {
+    keywords.forEach(keyword => {
+      if (lowercasePrompt.includes(keyword)) {
+        scores[spec] += 1;
+      }
+    });
+  });
+  
+  // Additional heuristics
+  if (lowercasePrompt.includes('image') || lowercasePrompt.includes('analyze this') || lowercasePrompt.includes('what do you see')) {
+    scores.vision += 2;
+  }
+  
+  if (lowercasePrompt.includes('def ') || lowercasePrompt.includes('function') || lowercasePrompt.includes('```')) {
+    scores.code += 2;
+  }
+  
+  if (lowercasePrompt.includes('quick') || lowercasePrompt.includes('fast') || prompt.length < 50) {
+    scores.speed += 2;
+  }
+  
+  if (lowercasePrompt.includes('logic') || lowercasePrompt.includes('step by step') || lowercasePrompt.includes('reasoning')) {
+    scores.reasoning += 2;
+  }
+  
+  // Determine required specializations (threshold-based)
+  const required: Array<'code' | 'vision' | 'reasoning' | 'speed' | 'general'> = [];
+  
+  Object.entries(scores).forEach(([spec, score]) => {
+    if (score >= 2) { // Threshold for requiring specialization
+      required.push(spec as 'code' | 'vision' | 'reasoning' | 'speed' | 'general');
+    }
+  });
+  
+  // Default to general if no specialization detected
+  if (required.length === 0) {
+    required.push('general');
+  }
+  
+  return { required, scores };
+}
 
 // Task type analyzer function
 function analyzeTaskType(prompt: string): {
@@ -342,12 +581,13 @@ function analyzeStrategy(
 function selectModel(
   complexity: number, 
   strategy: string,
+  requiredSpecializations: Array<'code' | 'vision' | 'reasoning' | 'speed' | 'general'>,
   constraints?: {
     maxCost?: 'low' | 'medium' | 'high';
     maxLatency?: 'low' | 'medium' | 'high';
-    preferredProvider?: 'anthropic' | 'openai' | 'google';
+    preferredProvider?: 'anthropic' | 'openai' | 'google' | 'meta' | 'mistral' | 'cohere';
   }
-): { model: Model; reason: string } {
+): { model: Model; reason: string; specializationMatch: boolean } {
   let availableModels = [...MODEL_REGISTRY];
   
   // Strategy-specific model preferences
@@ -378,33 +618,60 @@ function selectModel(
     }
   }
   
-  // Find the best model based on complexity requirements
-  let bestModel = availableModels[0];
+  // Find models that match required specializations
+  const specializedModels = availableModels.filter(model =>
+    requiredSpecializations.some(spec => model.specializations.includes(spec))
+  );
+  
+  // Prefer specialized models if available, otherwise use general models
+  const candidateModels = specializedModels.length > 0 ? specializedModels : availableModels;
+  const specializationMatch = specializedModels.length > 0;
+  
+  // Find the best model based on complexity and specialization match
+  let bestModel = candidateModels[0];
   let bestScore = Infinity;
   
-  for (const model of availableModels) {
-    const complexityDiff = Math.abs(model.complexity - complexity);
+  for (const model of candidateModels) {
+    let score = Math.abs(model.complexity - complexity);
     
-    // Prefer models that match complexity closely
-    if (complexityDiff < bestScore) {
+    // Bonus for specialization matches
+    const specializationMatches = requiredSpecializations.filter(spec => 
+      model.specializations.includes(spec)
+    ).length;
+    score -= specializationMatches * 0.5;
+    
+    // Prefer models that match complexity and specializations
+    if (score < bestScore) {
       bestModel = model;
-      bestScore = complexityDiff;
+      bestScore = score;
     }
   }
   
-  // Generate reason for selection
+  // Generate comprehensive reason for selection
   let reason = '';
-  if (strategy === 'escalate') {
-    reason = `Selected high-capability ${bestModel.id} for escalation strategy`;
-  } else if (strategy === 'delegate' || strategy === 'parallel') {
-    reason = `Selected cost-effective ${bestModel.id} for ${strategy} strategy`;
-  } else if (constraints?.preferredProvider && bestModel.provider === constraints.preferredProvider) {
-    reason = `Selected ${bestModel.id} from preferred provider ${bestModel.provider}`;
+  const matchedSpecs = requiredSpecializations.filter(spec => 
+    bestModel.specializations.includes(spec)
+  );
+  
+  if (matchedSpecs.length > 0) {
+    reason = `Selected ${bestModel.id} - specialized for ${matchedSpecs.join(', ')}`;
   } else {
-    reason = `Selected ${bestModel.id} as optimal match for complexity level ${complexity}`;
+    reason = `Selected ${bestModel.id} - general purpose model`;
   }
   
-  return { model: bestModel, reason };
+  if (strategy === 'escalate') {
+    reason += ' (escalation strategy)';
+  } else if (strategy === 'delegate' || strategy === 'parallel') {
+    reason += ` (${strategy} strategy, cost-optimized)`;
+  }
+  
+  if (constraints?.preferredProvider && bestModel.provider === constraints.preferredProvider) {
+    reason += ` from preferred provider ${bestModel.provider}`;
+  }
+  
+  reason += ` - complexity ${bestModel.complexity}/${complexity} match`;
+  
+  return { model: bestModel, reason, specializationMatch };
 }
 
 // Request/Response interfaces
@@ -413,22 +680,38 @@ interface RouteRequest {
   constraints?: {
     maxCost?: 'low' | 'medium' | 'high';
     maxLatency?: 'low' | 'medium' | 'high';
-    preferredProvider?: 'anthropic' | 'openai' | 'google';
+    preferredProvider?: 'anthropic' | 'openai' | 'google' | 'meta' | 'mistral' | 'cohere';
   };
 }
 
 interface RouteResponse {
-  // New strategy fields
+  // Core routing decision
   strategy: 'direct' | 'delegate' | 'parallel' | 'escalate';
   strategyReason: string;
   selectedModel: string;
   modelReason: string;
+  
+  // Model characteristics
   estimatedCost: 'low' | 'medium' | 'high';
   complexity: number;
+  provider: string;
+  
+  // Specialized analysis
+  requiredSpecializations: Array<'code' | 'vision' | 'reasoning' | 'speed' | 'general'>;
+  specializationMatch: boolean;
   parallelizable: boolean;
+  
+  // Cost analysis
   tokenEstimate: {
     direct: number;
     delegated?: number;
+  };
+  contextWindow: number;
+  
+  // Task analysis details
+  taskType: {
+    primary: 'execution' | 'research' | 'question' | 'creative';
+    confidence: number;
   };
   
   // Backward compatibility - keep existing fields
@@ -451,6 +734,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<RouteResp
     // Analyze prompt complexity
     const complexity = analyzeComplexity(body.prompt);
     
+    // Analyze required specializations
+    const specializationAnalysis = analyzeSpecializations(body.prompt);
+    
     // Analyze task type
     const taskTypeAnalysis = analyzeTaskType(body.prompt);
     
@@ -472,23 +758,41 @@ export async function POST(request: NextRequest): Promise<NextResponse<RouteResp
     // Update token estimate with final strategy
     const finalTokenEstimate = estimateTokens(body.prompt, strategyAnalysis.strategy);
     
-    // Select the best model based on strategy and complexity
-    const { model, reason: modelReason } = selectModel(
+    // Select the best model based on strategy, complexity, and specializations
+    const { model, reason: modelReason, specializationMatch } = selectModel(
       complexity,
       strategyAnalysis.strategy,
+      specializationAnalysis.required,
       body.constraints
     );
     
     // Build response
     const response: RouteResponse = {
+      // Core routing decision
       strategy: strategyAnalysis.strategy,
       strategyReason: strategyAnalysis.reason,
       selectedModel: model.id,
       modelReason,
+      
+      // Model characteristics
       estimatedCost: model.cost,
       complexity,
+      provider: model.provider,
+      
+      // Specialized analysis
+      requiredSpecializations: specializationAnalysis.required,
+      specializationMatch,
       parallelizable: parallelizationAnalysis.parallelizable,
+      
+      // Cost analysis
       tokenEstimate: finalTokenEstimate,
+      contextWindow: model.contextWindow,
+      
+      // Task analysis details
+      taskType: {
+        primary: taskTypeAnalysis.primary,
+        confidence: taskTypeAnalysis.confidence
+      },
       
       // Backward compatibility
       reason: modelReason
@@ -505,10 +809,31 @@ export async function POST(request: NextRequest): Promise<NextResponse<RouteResp
   }
 }
 
-// Optional: Add GET endpoint for health check
-export async function GET(): Promise<NextResponse<{ status: string; models: string[] }>> {
+// GET endpoint for health check and model registry info
+export async function GET(): Promise<NextResponse<{ 
+  status: string; 
+  totalModels: number;
+  providers: string[];
+  models: Array<{
+    id: string;
+    provider: string;
+    complexity: number;
+    cost: string;
+    specializations: string[];
+  }>;
+}>> {
+  const providers = [...new Set(MODEL_REGISTRY.map(m => m.provider))];
+  
   return NextResponse.json({
-    status: 'AgentRouter API is running',
-    models: MODEL_REGISTRY.map(m => m.id)
+    status: 'AgentRouter API is running with expanded model registry',
+    totalModels: MODEL_REGISTRY.length,
+    providers,
+    models: MODEL_REGISTRY.map(m => ({
+      id: m.id,
+      provider: m.provider,
+      complexity: m.complexity,
+      cost: m.cost,
+      specializations: m.specializations
+    }))
   });
 }
