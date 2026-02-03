@@ -1,97 +1,94 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ethers } from 'ethers';
 
-// AgentVault - Balance Endpoint
-// GET /api/vault/balance?address=0x...&chain=base
+// Base L2 RPC endpoints
+const BASE_RPC = 'https://mainnet.base.org';
 
-const RPC_URLS: Record<string, string> = {
-  base: 'https://mainnet.base.org',
-  ethereum: 'https://eth.llamarpc.com',
+// ERC20 ABI for balanceOf
+const ERC20_ABI = [
+  'function balanceOf(address owner) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+  'function symbol() view returns (string)',
+];
+
+// Known tokens on Base
+const TOKENS: Record<string, { address: string; symbol: string; decimals: number }> = {
+  OPENWORK: {
+    address: '0x299c30DD5974BF4D5bFE42C340CA40462816AB07',
+    symbol: '$OPENWORK',
+    decimals: 18,
+  },
+  USDC: {
+    address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    symbol: 'USDC',
+    decimals: 6,
+  },
 };
 
-interface BalanceResponse {
-  address: string;
-  chain: string;
-  balances: {
-    native: string;
-    nativeFormatted: string;
-    tokens?: Array<{
-      address: string;
-      symbol: string;
-      balance: string;
-      decimals: number;
-    }>;
-  };
-  timestamp: string;
-}
-
-async function getBalance(rpcUrl: string, address: string): Promise<string> {
-  const response = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'eth_getBalance',
-      params: [address, 'latest'],
-      id: 1,
-    }),
-  });
-  
-  const data = await response.json();
-  return data.result || '0x0';
-}
-
-function hexToEth(hex: string): string {
-  const wei = BigInt(hex);
-  const eth = Number(wei) / 1e18;
-  return eth.toFixed(6);
-}
-
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const address = searchParams.get('address');
-  const chain = searchParams.get('chain') || 'base';
-
-  if (!address) {
-    return NextResponse.json(
-      { error: 'Missing address parameter' },
-      { status: 400 }
-    );
-  }
-
-  if (!address.match(/^0x[a-fA-F0-9]{40}$/)) {
-    return NextResponse.json(
-      { error: 'Invalid address format' },
-      { status: 400 }
-    );
-  }
-
-  const rpcUrl = RPC_URLS[chain];
-  if (!rpcUrl) {
-    return NextResponse.json(
-      { error: `Unsupported chain: ${chain}. Supported: ${Object.keys(RPC_URLS).join(', ')}` },
-      { status: 400 }
-    );
-  }
-
   try {
-    const balanceHex = await getBalance(rpcUrl, address);
-    const balanceFormatted = hexToEth(balanceHex);
+    const { searchParams } = new URL(request.url);
+    const walletAddress = searchParams.get('address');
 
-    const response: BalanceResponse = {
-      address,
-      chain,
+    if (!walletAddress) {
+      return NextResponse.json(
+        { error: 'Missing address parameter' },
+        { status: 400 }
+      );
+    }
+
+    // Validate address
+    if (!ethers.isAddress(walletAddress)) {
+      return NextResponse.json(
+        { error: 'Invalid wallet address' },
+        { status: 400 }
+      );
+    }
+
+    const provider = new ethers.JsonRpcProvider(BASE_RPC);
+
+    // Get ETH balance
+    const ethBalance = await provider.getBalance(walletAddress);
+
+    // Get token balances
+    const tokenBalances: Record<string, { raw: string; formatted: string; symbol: string }> = {};
+
+    for (const [name, token] of Object.entries(TOKENS)) {
+      try {
+        const contract = new ethers.Contract(token.address, ERC20_ABI, provider);
+        const balance = await contract.balanceOf(walletAddress);
+        tokenBalances[name] = {
+          raw: balance.toString(),
+          formatted: ethers.formatUnits(balance, token.decimals),
+          symbol: token.symbol,
+        };
+      } catch (err) {
+        console.error(`Error fetching ${name} balance:`, err);
+        tokenBalances[name] = {
+          raw: '0',
+          formatted: '0',
+          symbol: token.symbol,
+        };
+      }
+    }
+
+    return NextResponse.json({
+      address: walletAddress,
+      network: 'base',
       balances: {
-        native: balanceHex,
-        nativeFormatted: `${balanceFormatted} ETH`,
+        ETH: {
+          raw: ethBalance.toString(),
+          formatted: ethers.formatEther(ethBalance),
+          symbol: 'ETH',
+        },
+        ...tokenBalances,
       },
       timestamp: new Date().toISOString(),
-    };
-
-    return NextResponse.json(response);
+    });
   } catch (error) {
-    console.error('Balance fetch error:', error);
+    console.error('Balance API error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch balance', details: String(error) },
+      { error: 'Failed to fetch balances' },
       { status: 500 }
     );
   }
