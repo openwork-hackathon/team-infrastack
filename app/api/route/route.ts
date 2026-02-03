@@ -581,12 +581,13 @@ function analyzeStrategy(
 function selectModel(
   complexity: number, 
   strategy: string,
+  requiredSpecializations: Array<'code' | 'vision' | 'reasoning' | 'speed' | 'general'>,
   constraints?: {
     maxCost?: 'low' | 'medium' | 'high';
     maxLatency?: 'low' | 'medium' | 'high';
-    preferredProvider?: 'anthropic' | 'openai' | 'google';
+    preferredProvider?: 'anthropic' | 'openai' | 'google' | 'meta' | 'mistral' | 'cohere';
   }
-): { model: Model; reason: string } {
+): { model: Model; reason: string; specializationMatch: boolean } {
   let availableModels = [...MODEL_REGISTRY];
   
   // Strategy-specific model preferences
@@ -617,33 +618,60 @@ function selectModel(
     }
   }
   
-  // Find the best model based on complexity requirements
-  let bestModel = availableModels[0];
+  // Find models that match required specializations
+  const specializedModels = availableModels.filter(model =>
+    requiredSpecializations.some(spec => model.specializations.includes(spec))
+  );
+  
+  // Prefer specialized models if available, otherwise use general models
+  const candidateModels = specializedModels.length > 0 ? specializedModels : availableModels;
+  const specializationMatch = specializedModels.length > 0;
+  
+  // Find the best model based on complexity and specialization match
+  let bestModel = candidateModels[0];
   let bestScore = Infinity;
   
-  for (const model of availableModels) {
-    const complexityDiff = Math.abs(model.complexity - complexity);
+  for (const model of candidateModels) {
+    let score = Math.abs(model.complexity - complexity);
     
-    // Prefer models that match complexity closely
-    if (complexityDiff < bestScore) {
+    // Bonus for specialization matches
+    const specializationMatches = requiredSpecializations.filter(spec => 
+      model.specializations.includes(spec)
+    ).length;
+    score -= specializationMatches * 0.5;
+    
+    // Prefer models that match complexity and specializations
+    if (score < bestScore) {
       bestModel = model;
-      bestScore = complexityDiff;
+      bestScore = score;
     }
   }
   
-  // Generate reason for selection
+  // Generate comprehensive reason for selection
   let reason = '';
-  if (strategy === 'escalate') {
-    reason = `Selected high-capability ${bestModel.id} for escalation strategy`;
-  } else if (strategy === 'delegate' || strategy === 'parallel') {
-    reason = `Selected cost-effective ${bestModel.id} for ${strategy} strategy`;
-  } else if (constraints?.preferredProvider && bestModel.provider === constraints.preferredProvider) {
-    reason = `Selected ${bestModel.id} from preferred provider ${bestModel.provider}`;
+  const matchedSpecs = requiredSpecializations.filter(spec => 
+    bestModel.specializations.includes(spec)
+  );
+  
+  if (matchedSpecs.length > 0) {
+    reason = `Selected ${bestModel.id} - specialized for ${matchedSpecs.join(', ')}`;
   } else {
-    reason = `Selected ${bestModel.id} as optimal match for complexity level ${complexity}`;
+    reason = `Selected ${bestModel.id} - general purpose model`;
   }
   
-  return { model: bestModel, reason };
+  if (strategy === 'escalate') {
+    reason += ' (escalation strategy)';
+  } else if (strategy === 'delegate' || strategy === 'parallel') {
+    reason += ` (${strategy} strategy, cost-optimized)`;
+  }
+  
+  if (constraints?.preferredProvider && bestModel.provider === constraints.preferredProvider) {
+    reason += ` from preferred provider ${bestModel.provider}`;
+  }
+  
+  reason += ` - complexity ${bestModel.complexity}/${complexity} match`;
+  
+  return { model: bestModel, reason, specializationMatch };
 }
 
 // Request/Response interfaces
@@ -652,22 +680,38 @@ interface RouteRequest {
   constraints?: {
     maxCost?: 'low' | 'medium' | 'high';
     maxLatency?: 'low' | 'medium' | 'high';
-    preferredProvider?: 'anthropic' | 'openai' | 'google';
+    preferredProvider?: 'anthropic' | 'openai' | 'google' | 'meta' | 'mistral' | 'cohere';
   };
 }
 
 interface RouteResponse {
-  // New strategy fields
+  // Core routing decision
   strategy: 'direct' | 'delegate' | 'parallel' | 'escalate';
   strategyReason: string;
   selectedModel: string;
   modelReason: string;
+  
+  // Model characteristics
   estimatedCost: 'low' | 'medium' | 'high';
   complexity: number;
+  provider: string;
+  
+  // Specialized analysis
+  requiredSpecializations: Array<'code' | 'vision' | 'reasoning' | 'speed' | 'general'>;
+  specializationMatch: boolean;
   parallelizable: boolean;
+  
+  // Cost analysis
   tokenEstimate: {
     direct: number;
     delegated?: number;
+  };
+  contextWindow: number;
+  
+  // Task analysis details
+  taskType: {
+    primary: 'execution' | 'research' | 'question' | 'creative';
+    confidence: number;
   };
   
   // Backward compatibility - keep existing fields
@@ -690,6 +734,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<RouteResp
     // Analyze prompt complexity
     const complexity = analyzeComplexity(body.prompt);
     
+    // Analyze required specializations
+    const specializationAnalysis = analyzeSpecializations(body.prompt);
+    
     // Analyze task type
     const taskTypeAnalysis = analyzeTaskType(body.prompt);
     
@@ -711,23 +758,41 @@ export async function POST(request: NextRequest): Promise<NextResponse<RouteResp
     // Update token estimate with final strategy
     const finalTokenEstimate = estimateTokens(body.prompt, strategyAnalysis.strategy);
     
-    // Select the best model based on strategy and complexity
-    const { model, reason: modelReason } = selectModel(
+    // Select the best model based on strategy, complexity, and specializations
+    const { model, reason: modelReason, specializationMatch } = selectModel(
       complexity,
       strategyAnalysis.strategy,
+      specializationAnalysis.required,
       body.constraints
     );
     
     // Build response
     const response: RouteResponse = {
+      // Core routing decision
       strategy: strategyAnalysis.strategy,
       strategyReason: strategyAnalysis.reason,
       selectedModel: model.id,
       modelReason,
+      
+      // Model characteristics
       estimatedCost: model.cost,
       complexity,
+      provider: model.provider,
+      
+      // Specialized analysis
+      requiredSpecializations: specializationAnalysis.required,
+      specializationMatch,
       parallelizable: parallelizationAnalysis.parallelizable,
+      
+      // Cost analysis
       tokenEstimate: finalTokenEstimate,
+      contextWindow: model.contextWindow,
+      
+      // Task analysis details
+      taskType: {
+        primary: taskTypeAnalysis.primary,
+        confidence: taskTypeAnalysis.confidence
+      },
       
       // Backward compatibility
       reason: modelReason
@@ -744,10 +809,31 @@ export async function POST(request: NextRequest): Promise<NextResponse<RouteResp
   }
 }
 
-// Optional: Add GET endpoint for health check
-export async function GET(): Promise<NextResponse<{ status: string; models: string[] }>> {
+// GET endpoint for health check and model registry info
+export async function GET(): Promise<NextResponse<{ 
+  status: string; 
+  totalModels: number;
+  providers: string[];
+  models: Array<{
+    id: string;
+    provider: string;
+    complexity: number;
+    cost: string;
+    specializations: string[];
+  }>;
+}>> {
+  const providers = [...new Set(MODEL_REGISTRY.map(m => m.provider))];
+  
   return NextResponse.json({
-    status: 'AgentRouter API is running',
-    models: MODEL_REGISTRY.map(m => m.id)
+    status: 'AgentRouter API is running with expanded model registry',
+    totalModels: MODEL_REGISTRY.length,
+    providers,
+    models: MODEL_REGISTRY.map(m => ({
+      id: m.id,
+      provider: m.provider,
+      complexity: m.complexity,
+      cost: m.cost,
+      specializations: m.specializations
+    }))
   });
 }
