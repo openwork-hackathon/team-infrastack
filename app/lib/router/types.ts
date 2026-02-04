@@ -500,6 +500,8 @@ export interface AnthropicTool {
 }
 
 export const ANTHROPIC_PRICING: Record<string, { input: number; output: number }> = {
+  'claude-sonnet-4-20250514': { input: 3.0, output: 15.0 },
+  'claude-opus-4-20250514': { input: 15.0, output: 75.0 },
   'claude-3-5-sonnet-20241022': { input: 3.0, output: 15.0 },
   'claude-3-opus-20240229': { input: 15.0, output: 75.0 },
   'claude-3-sonnet-20240229': { input: 3.0, output: 15.0 },

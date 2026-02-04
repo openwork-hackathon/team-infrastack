@@ -39,7 +39,17 @@ export class AnthropicAdapter  {
   calculateCost(model: string, usage: TokenUsage): Cost {
     const pricing = ANTHROPIC_PRICING[model as AnthropicModel];
     if (!pricing) {
-      throw new Error(`Unknown model: ${model}`);
+      // Default pricing for unknown models (use Sonnet pricing as fallback)
+      console.warn(`Unknown model pricing: ${model}, using default`);
+      const defaultPricing = { input: 3.0, output: 15.0 };
+      const input_cost = (usage.prompt_tokens / 1_000_000) * defaultPricing.input;
+      const output_cost = (usage.completion_tokens / 1_000_000) * defaultPricing.output;
+      return {
+        input_cost: parseFloat(input_cost.toFixed(6)),
+        output_cost: parseFloat(output_cost.toFixed(6)),
+        total_cost: parseFloat((input_cost + output_cost).toFixed(6)),
+        currency: 'USD'
+      };
     }
 
     const input_cost = (usage.prompt_tokens / 1_000_000) * pricing.input;
