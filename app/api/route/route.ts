@@ -32,7 +32,7 @@ const MODEL_REGISTRY: Model[] = [
     description: 'Excellent balance of capability and cost for coding tasks'
   },
   {
-    id: 'claude-3-5-haiku-20241022',
+    id: 'claude-3-haiku-20240307',
     complexity: 2,
     cost: 'low',
     provider: 'anthropic',
