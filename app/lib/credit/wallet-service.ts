@@ -9,18 +9,17 @@ import {
   InsufficientFundsError,
   CreditError 
 } from './types';
+import { creditStore } from './store';
 
 export class WalletService {
-  private wallets = new Map<string, Wallet>();
-  private walletsByAgent = new Map<string, string>(); // agent_id -> wallet_id
-  private transfers = new Map<string, Transfer>();
 
   /**
    * Create a new wallet for an agent
    */
   async createWallet(agentId: string): Promise<Wallet> {
     // Check if agent already has a wallet
-    if (this.walletsByAgent.has(agentId)) {
+    const existingWallet = creditStore.getWalletByAgent(agentId);
+    if (existingWallet) {
       throw new CreditError(`Agent ${agentId} already has a wallet`, 'WALLET_EXISTS');
     }
 
@@ -37,9 +36,7 @@ export class WalletService {
       updated_at: now
     };
 
-    this.wallets.set(walletId, wallet);
-    this.walletsByAgent.set(agentId, walletId);
-
+    creditStore.saveWallet(wallet);
     return wallet;
   }
 
@@ -47,18 +44,14 @@ export class WalletService {
    * Get wallet by ID
    */
   async getWallet(walletId: string): Promise<Wallet | null> {
-    const wallet = this.wallets.get(walletId);
-    return wallet || null;
+    return creditStore.getWallet(walletId);
   }
 
   /**
    * Get wallet by agent ID
    */
   async getWalletByAgent(agentId: string): Promise<Wallet | null> {
-    const walletId = this.walletsByAgent.get(agentId);
-    if (!walletId) return null;
-    
-    return this.getWallet(walletId);
+    return creditStore.getWalletByAgent(agentId);
   }
 
   /**
@@ -69,7 +62,7 @@ export class WalletService {
       throw new CreditError('Deposit amount must be positive', 'INVALID_AMOUNT');
     }
 
-    const wallet = this.wallets.get(walletId);
+    const wallet = creditStore.getWallet(walletId);
     if (!wallet) {
       throw new WalletNotFoundError(walletId);
     }
@@ -92,8 +85,9 @@ export class WalletService {
     // Recalculate available balance
     await this.recalculateAvailable(walletId);
 
-    // Store transfer
-    this.transfers.set(transfer.id, transfer);
+    // Store transfer and wallet updates
+    creditStore.saveTransfer(transfer);
+    creditStore.saveWallet(wallet);
 
     return transfer;
   }
@@ -102,7 +96,7 @@ export class WalletService {
    * Get available balance (balance - reserved - liens)
    */
   async getAvailableBalance(walletId: string): Promise<number> {
-    const wallet = this.wallets.get(walletId);
+    const wallet = creditStore.getWallet(walletId);
     if (!wallet) {
       throw new WalletNotFoundError(walletId);
     }
@@ -115,7 +109,7 @@ export class WalletService {
    * This will be called by other services when liens/escrows change
    */
   async recalculateAvailable(walletId: string): Promise<void> {
-    const wallet = this.wallets.get(walletId);
+    const wallet = creditStore.getWallet(walletId);
     if (!wallet) {
       throw new WalletNotFoundError(walletId);
     }
@@ -129,15 +123,17 @@ export class WalletService {
     // Calculate available = balance - reserved - liens
     wallet.available = Math.max(0, wallet.balance - totalReserved - totalLiens);
     wallet.updated_at = new Date();
+
+    // Save updated wallet
+    creditStore.saveWallet(wallet);
   }
 
   /**
    * Helper method to get total lien amount (will be called by LienService)
    */
   private async getTotalLienAmount(walletId: string): Promise<number> {
-    // This will be implemented by LienService
-    // For now, return 0 to avoid circular dependency
-    return 0;
+    const liens = creditStore.getLiensAgainst(walletId);
+    return liens.reduce((total, lien) => total + lien.amount, 0);
   }
 
   /**
@@ -154,8 +150,8 @@ export class WalletService {
       throw new CreditError('Transfer amount must be positive', 'INVALID_AMOUNT');
     }
 
-    const fromWallet = this.wallets.get(fromWalletId);
-    const toWallet = this.wallets.get(toWalletId);
+    const fromWallet = creditStore.getWallet(fromWalletId);
+    const toWallet = creditStore.getWallet(toWalletId);
 
     if (!fromWallet) throw new WalletNotFoundError(fromWalletId);
     if (!toWallet) throw new WalletNotFoundError(toWalletId);
@@ -183,12 +179,16 @@ export class WalletService {
     toWallet.balance += amount;
     toWallet.updated_at = new Date();
 
+    // Save wallet updates
+    creditStore.saveWallet(fromWallet);
+    creditStore.saveWallet(toWallet);
+
     // Recalculate available balances
     await this.recalculateAvailable(fromWalletId);
     await this.recalculateAvailable(toWalletId);
 
     // Store transfer
-    this.transfers.set(transfer.id, transfer);
+    creditStore.saveTransfer(transfer);
 
     return transfer;
   }
@@ -197,7 +197,7 @@ export class WalletService {
    * Update reserved amount (called by EscrowService)
    */
   async updateReserved(walletId: string, deltaAmount: number): Promise<void> {
-    const wallet = this.wallets.get(walletId);
+    const wallet = creditStore.getWallet(walletId);
     if (!wallet) {
       throw new WalletNotFoundError(walletId);
     }
@@ -206,6 +206,7 @@ export class WalletService {
     wallet.reserved = Math.max(0, wallet.reserved); // Ensure non-negative
     wallet.updated_at = new Date();
 
+    creditStore.saveWallet(wallet);
     await this.recalculateAvailable(walletId);
   }
 
@@ -213,21 +214,18 @@ export class WalletService {
    * Get transfer history for a wallet
    */
   async getTransferHistory(walletId: string, limit: number = 100): Promise<Transfer[]> {
-    const wallet = this.wallets.get(walletId);
+    const wallet = creditStore.getWallet(walletId);
     if (!wallet) {
       throw new WalletNotFoundError(walletId);
     }
 
-    return Array.from(this.transfers.values())
-      .filter(t => t.from_wallet_id === walletId || t.to_wallet_id === walletId)
-      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
-      .slice(0, limit);
+    return creditStore.getTransferHistory(walletId, limit);
   }
 
   /**
    * Get all wallets (admin function)
    */
   async getAllWallets(): Promise<Wallet[]> {
-    return Array.from(this.wallets.values());
+    return creditStore.getAllWallets();
   }
 }

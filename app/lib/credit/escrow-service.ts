@@ -11,9 +11,9 @@ import {
   CreditError 
 } from './types';
 import { WalletService } from './wallet-service';
+import { creditStore } from './store';
 
 export class EscrowService {
-  private escrows = new Map<string, Escrow>();
   private walletService: WalletService;
 
   constructor(walletService: WalletService) {
@@ -52,7 +52,7 @@ export class EscrowService {
       release_condition: releaseCondition
     };
 
-    this.escrows.set(escrow.id, escrow);
+    creditStore.saveEscrow(escrow);
 
     // Update wallet's reserved amount
     await this.walletService.updateReserved(walletId, amount);
@@ -64,7 +64,7 @@ export class EscrowService {
    * Release escrow funds to a specific wallet
    */
   async releaseFunds(escrowId: string, toWalletId: string): Promise<Transfer> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = creditStore.getEscrow(escrowId);
     if (!escrow) {
       throw new EscrowNotFoundError(escrowId);
     }
@@ -90,6 +90,7 @@ export class EscrowService {
 
     // Mark escrow as released
     escrow.released_at = new Date();
+    creditStore.saveEscrow(escrow);
 
     // Reduce reserved amount in source wallet
     await this.walletService.updateReserved(escrow.wallet_id, -escrow.amount);
@@ -101,7 +102,7 @@ export class EscrowService {
    * Cancel escrow and return funds to original wallet
    */
   async cancelEscrow(escrowId: string): Promise<void> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = creditStore.getEscrow(escrowId);
     if (!escrow) {
       throw new EscrowNotFoundError(escrowId);
     }
@@ -112,6 +113,7 @@ export class EscrowService {
 
     // Mark as released (to prevent double-cancellation)
     escrow.released_at = new Date();
+    creditStore.saveEscrow(escrow);
 
     // Reduce reserved amount (funds return to available balance)
     await this.walletService.updateReserved(escrow.wallet_id, -escrow.amount);
@@ -121,9 +123,7 @@ export class EscrowService {
    * Get active escrows for a wallet
    */
   async getActiveEscrows(walletId: string): Promise<Escrow[]> {
-    return Array.from(this.escrows.values())
-      .filter(escrow => escrow.wallet_id === walletId && !escrow.released_at)
-      .sort((a, b) => b.locked_at.getTime() - a.locked_at.getTime());
+    return creditStore.getActiveEscrows(walletId);
   }
 
   /**
@@ -138,17 +138,14 @@ export class EscrowService {
    * Get escrow by ID
    */
   async getEscrow(escrowId: string): Promise<Escrow | null> {
-    return this.escrows.get(escrowId) || null;
+    return creditStore.getEscrow(escrowId);
   }
 
   /**
    * Get all escrows for a wallet (including released ones)
    */
   async getEscrowHistory(walletId: string, limit: number = 100): Promise<Escrow[]> {
-    return Array.from(this.escrows.values())
-      .filter(escrow => escrow.wallet_id === walletId)
-      .sort((a, b) => b.locked_at.getTime() - a.locked_at.getTime())
-      .slice(0, limit);
+    return creditStore.getEscrowHistory(walletId, limit);
   }
 
   /**
@@ -158,7 +155,7 @@ export class EscrowService {
     escrowId: string, 
     updates: { purpose?: string; release_condition?: string }
   ): Promise<Escrow> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = creditStore.getEscrow(escrowId);
     if (!escrow) {
       throw new EscrowNotFoundError(escrowId);
     }
@@ -175,6 +172,7 @@ export class EscrowService {
       escrow.release_condition = updates.release_condition;
     }
 
+    creditStore.saveEscrow(escrow);
     return escrow;
   }
 
@@ -186,7 +184,7 @@ export class EscrowService {
     toWalletId: string, 
     amount: number
   ): Promise<{ transfer: Transfer; remainingEscrow: Escrow | null }> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = creditStore.getEscrow(escrowId);
     if (!escrow) {
       throw new EscrowNotFoundError(escrowId);
     }
@@ -233,6 +231,8 @@ export class EscrowService {
       escrow.released_at = new Date();
     }
 
+    creditStore.saveEscrow(escrow);
+
     return { transfer, remainingEscrow };
   }
 
@@ -240,16 +240,13 @@ export class EscrowService {
    * Get all escrows (admin function)
    */
   async getAllEscrows(): Promise<Escrow[]> {
-    return Array.from(this.escrows.values());
+    return creditStore.getAllEscrows();
   }
 
   /**
    * Find escrows by purpose pattern
    */
   async findEscrowsByPurpose(purposePattern: string): Promise<Escrow[]> {
-    const regex = new RegExp(purposePattern, 'i');
-    return Array.from(this.escrows.values())
-      .filter(escrow => regex.test(escrow.purpose))
-      .sort((a, b) => b.locked_at.getTime() - a.locked_at.getTime());
+    return creditStore.findEscrowsByPurpose(purposePattern);
   }
 }

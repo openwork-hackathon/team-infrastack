@@ -10,9 +10,9 @@ import {
   CreditError 
 } from './types';
 import { WalletService } from './wallet-service';
+import { creditStore } from './store';
 
 export class LienService {
-  private liens = new Map<string, Lien>();
   private walletService: WalletService;
 
   constructor(walletService: WalletService) {
@@ -50,7 +50,7 @@ export class LienService {
       created_at: new Date()
     };
 
-    this.liens.set(lien.id, lien);
+    creditStore.saveLien(lien);
 
     // Recalculate debtor's available balance
     await this.walletService.recalculateAvailable(debtorWalletId);
@@ -62,18 +62,14 @@ export class LienService {
    * Get all liens against a wallet (debts owed by this wallet)
    */
   async getLiensAgainst(walletId: string): Promise<Lien[]> {
-    return Array.from(this.liens.values())
-      .filter(lien => lien.debtor_wallet_id === walletId && !lien.settled_at)
-      .sort((a, b) => a.priority - b.priority); // Lower priority number = higher priority
+    return creditStore.getLiensAgainst(walletId);
   }
 
   /**
    * Get all liens owed to a wallet (debts owed to this wallet)
    */
   async getLiensOwed(walletId: string): Promise<Lien[]> {
-    return Array.from(this.liens.values())
-      .filter(lien => lien.creditor_wallet_id === walletId && !lien.settled_at)
-      .sort((a, b) => a.priority - b.priority);
+    return creditStore.getLiensOwed(walletId);
   }
 
   /**
@@ -88,7 +84,7 @@ export class LienService {
    * Settle a specific lien
    */
   async settleLien(lienId: string): Promise<Transfer> {
-    const lien = this.liens.get(lienId);
+    const lien = creditStore.getLien(lienId);
     if (!lien) {
       throw new LienNotFoundError(lienId);
     }
@@ -121,6 +117,7 @@ export class LienService {
 
     // Mark lien as settled
     lien.settled_at = new Date();
+    creditStore.saveLien(lien);
 
     // Recalculate debtor's available balance
     await this.walletService.recalculateAvailable(lien.debtor_wallet_id);
@@ -167,14 +164,14 @@ export class LienService {
    * Get lien by ID
    */
   async getLien(lienId: string): Promise<Lien | null> {
-    return this.liens.get(lienId) || null;
+    return creditStore.getLien(lienId);
   }
 
   /**
    * Update lien priority
    */
   async updateLienPriority(lienId: string, newPriority: number): Promise<Lien> {
-    const lien = this.liens.get(lienId);
+    const lien = creditStore.getLien(lienId);
     if (!lien) {
       throw new LienNotFoundError(lienId);
     }
@@ -184,6 +181,7 @@ export class LienService {
     }
 
     lien.priority = newPriority;
+    creditStore.saveLien(lien);
 
     // Recalculate debtor's available balance (priorities may affect settlement order)
     await this.walletService.recalculateAvailable(lien.debtor_wallet_id);
@@ -195,7 +193,7 @@ export class LienService {
    * Cancel/void an unsettled lien
    */
   async cancelLien(lienId: string): Promise<void> {
-    const lien = this.liens.get(lienId);
+    const lien = creditStore.getLien(lienId);
     if (!lien) {
       throw new LienNotFoundError(lienId);
     }
@@ -205,7 +203,7 @@ export class LienService {
     }
 
     // Remove the lien
-    this.liens.delete(lienId);
+    creditStore.deleteLien(lienId);
 
     // Recalculate debtor's available balance
     await this.walletService.recalculateAvailable(lien.debtor_wallet_id);
@@ -215,19 +213,13 @@ export class LienService {
    * Get all liens (admin function)
    */
   async getAllLiens(): Promise<Lien[]> {
-    return Array.from(this.liens.values());
+    return creditStore.getAllLiens();
   }
 
   /**
    * Get settlement history for liens
    */
   async getSettlementHistory(walletId: string, limit: number = 100): Promise<Lien[]> {
-    return Array.from(this.liens.values())
-      .filter(lien => 
-        (lien.debtor_wallet_id === walletId || lien.creditor_wallet_id === walletId) 
-        && lien.settled_at
-      )
-      .sort((a, b) => (b.settled_at?.getTime() || 0) - (a.settled_at?.getTime() || 0))
-      .slice(0, limit);
+    return creditStore.getLienSettlementHistory(walletId, limit);
   }
 }
