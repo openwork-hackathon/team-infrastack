@@ -172,7 +172,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       model: body.model,
       messages: body.messages,
       temperature: body.temperature,
-      maxTokens: body.max_tokens,
+      max_tokens: body.max_tokens || 4096,
       stream: body.stream || false,
       apiKey: apiKey!,
       context
