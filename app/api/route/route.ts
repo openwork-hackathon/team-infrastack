@@ -12,18 +12,18 @@ interface Model {
 }
 
 const MODEL_REGISTRY: Model[] = [
-  // Anthropic Models
+  // Anthropic Models (Claude 4 - latest)
   {
-    id: 'claude-3-opus',
+    id: 'claude-opus-4-20250514',
     complexity: 5,
     cost: 'high',
     provider: 'anthropic',
     specializations: ['reasoning', 'general'],
     contextWindow: 200000,
-    description: 'Most capable model for complex reasoning and analysis'
+    description: 'Most capable Claude model for complex reasoning and analysis'
   },
   {
-    id: 'claude-3.5-sonnet',
+    id: 'claude-sonnet-4-20250514',
     complexity: 4,
     cost: 'medium',
     provider: 'anthropic',
@@ -32,7 +32,7 @@ const MODEL_REGISTRY: Model[] = [
     description: 'Excellent balance of capability and cost for coding tasks'
   },
   {
-    id: 'claude-3-haiku',
+    id: 'claude-3-5-haiku-20241022',
     complexity: 2,
     cost: 'low',
     provider: 'anthropic',
@@ -43,7 +43,7 @@ const MODEL_REGISTRY: Model[] = [
   
   // OpenAI Models
   {
-    id: 'gpt-4-turbo',
+    id: 'gpt-4-turbo-preview',
     complexity: 5,
     cost: 'high',
     provider: 'openai',
@@ -79,12 +79,12 @@ const MODEL_REGISTRY: Model[] = [
     description: 'Fast and reliable for general tasks'
   },
   {
-    id: 'o1-preview',
+    id: 'o1',
     complexity: 5,
     cost: 'high',
     provider: 'openai',
     specializations: ['reasoning'],
-    contextWindow: 128000,
+    contextWindow: 200000,
     description: 'Advanced reasoning model for complex problem solving'
   },
   {
@@ -99,12 +99,21 @@ const MODEL_REGISTRY: Model[] = [
   
   // Google Models
   {
+    id: 'gemini-2.0-flash',
+    complexity: 3,
+    cost: 'low',
+    provider: 'google',
+    specializations: ['speed', 'general', 'vision'],
+    contextWindow: 1000000,
+    description: 'Latest fast Gemini with multimodal capabilities'
+  },
+  {
     id: 'gemini-1.5-pro',
     complexity: 4,
     cost: 'medium',
     provider: 'google',
     specializations: ['general', 'vision'],
-    contextWindow: 1000000,
+    contextWindow: 2000000,
     description: 'High-capacity model with massive context window'
   },
   {
@@ -115,15 +124,6 @@ const MODEL_REGISTRY: Model[] = [
     specializations: ['speed', 'general'],
     contextWindow: 1000000,
     description: 'Fast model with large context window'
-  },
-  {
-    id: 'gemini-pro-vision',
-    complexity: 3,
-    cost: 'medium',
-    provider: 'google',
-    specializations: ['vision'],
-    contextWindow: 32000,
-    description: 'Specialized for image analysis and vision tasks'
   },
   
   // Meta Models
