@@ -801,7 +801,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<RouteResp
     return NextResponse.json(response);
     
   } catch (error) {
-    console.error('Error in route API:', error);
+    // SECURITY: Sanitize error message before logging to prevent key leakage
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const sanitizedError = errorMessage.replace(/sk-[a-zA-Z0-9_-]+/g, '[API_KEY_REDACTED]')
+                                       .replace(/api_[a-zA-Z0-9_-]+/g, '[API_KEY_REDACTED]')
+                                       .replace(/[A-Z0-9_-]{39}/g, '[API_KEY_REDACTED]');
+    console.error('Error in route API:', sanitizedError);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

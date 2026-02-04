@@ -3,6 +3,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { orchestrator, OrchestratorRequest, ExecutionPlan } from '../../lib/orchestrator';
+import { validateRequest, schemas } from '../../lib/security/validation';
+import { withErrorHandling, createSafeError } from '../../lib/security/errors';
+import { rateLimitOrchestration } from '../../lib/security/rate-limiter';
 
 export async function GET() {
   return NextResponse.json({
@@ -41,93 +44,51 @@ export async function GET() {
   });
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    
-    // Validate request
-    const validationError = validateRequest(body);
-    if (validationError) {
-      return NextResponse.json(
-        { error: validationError },
-        { status: 400 }
-      );
-    }
-    
-    // Prepare orchestrator request
-    const orchestratorRequest: OrchestratorRequest = {
-      task: body.task,
-      constraints: body.constraints || {},
-      planOnly: body.planOnly || false
-    };
-    
-    console.log('🎯 Orchestrating task:', orchestratorRequest.task);
-    
-    // Execute orchestration or plan generation
-    const result = await orchestrator.orchestrate(orchestratorRequest);
-    
-    if (body.planOnly) {
-      const plan = result as ExecutionPlan;
-      console.log(`📋 Plan generated - Strategy: ${result.strategy}, Tasks: ${plan.tasks?.length || 0}`);
-    } else {
-      console.log(`✅ Orchestration complete - Strategy: ${result.strategy}, Time: ${(result as any).executionTimeMs}ms`);
-    }
-    
-    return NextResponse.json(result);
-    
-  } catch (error) {
-    console.error('❌ Orchestration API error:', error);
-    
-    return NextResponse.json(
-      { 
-        error: 'Orchestration failed',
-        details: error instanceof Error ? error.message : 'Unknown error',
-        strategy: 'direct',
-        subTasks: [],
-        result: 'Failed to orchestrate task',
-        totalCost: 'low',
-        executionTimeMs: 0
-      },
-      { status: 500 }
-    );
+export const POST = withErrorHandling(async (request: NextRequest) => {
+  // Apply rate limiting
+  const rateLimitResult = await rateLimitOrchestration(request);
+  if (!rateLimitResult.success) {
+    throw createSafeError('RATE_LIMIT_EXCEEDED', {
+      limit: rateLimitResult.limit,
+      remaining: rateLimitResult.remaining,
+      resetTime: rateLimitResult.resetTime
+    }, rateLimitResult.error);
   }
-}
+  
+  // Validate request input
+  const validation = await validateRequest(request, schemas.orchestrator);
+  if (!validation.success) {
+    throw createSafeError('VALIDATION_ERROR', { error: validation.error });
+  }
+  
+  // Prepare orchestrator request with validated data
+  const orchestratorRequest: OrchestratorRequest = {
+    task: validation.data.task,
+    constraints: validation.data.constraints || {},
+    planOnly: validation.data.planOnly || false
+  };
+  
+  console.log('🎯 Orchestrating task:', validation.data.task.substring(0, 100) + '...');
+  
+  // Execute orchestration or plan generation
+  const result = await orchestrator.orchestrate(orchestratorRequest);
+  
+  if (validation.data.planOnly) {
+    const plan = result as ExecutionPlan;
+    console.log(`📋 Plan generated - Strategy: ${result.strategy}, Tasks: ${plan.tasks?.length || 0}`);
+  } else {
+    console.log(`✅ Orchestration complete - Strategy: ${result.strategy}, Time: ${(result as any).executionTimeMs}ms`);
+  }
+  
+  // Return success response with rate limit headers
+  const response = NextResponse.json(result);
+  response.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
+  response.headers.set('X-RateLimit-Reset', new Date(rateLimitResult.resetTime).toISOString());
+  
+  return response;
+});
 
-function validateRequest(body: any): string | null {
-  if (!body) {
-    return 'Request body is required';
-  }
-  
-  if (!body.task || typeof body.task !== 'string') {
-    return 'Task is required and must be a string';
-  }
-  
-  if (body.task.trim().length === 0) {
-    return 'Task cannot be empty';
-  }
-  
-  if (body.task.length > 2000) {
-    return 'Task description too long (max 2000 characters)';
-  }
-  
-  if (body.constraints) {
-    if (body.constraints.maxCost && 
-        !['low', 'medium', 'high'].includes(body.constraints.maxCost)) {
-      return 'maxCost must be: low, medium, or high';
-    }
-    
-    if (body.constraints.timeout && 
-        (typeof body.constraints.timeout !== 'number' || body.constraints.timeout <= 0)) {
-      return 'timeout must be a positive number';
-    }
-  }
-  
-  if (body.planOnly !== undefined && typeof body.planOnly !== 'boolean') {
-    return 'planOnly must be a boolean';
-  }
-  
-  return null;
-}
+// Old validation function removed - now using Zod schemas
 
 // Examples for testing:
 /*

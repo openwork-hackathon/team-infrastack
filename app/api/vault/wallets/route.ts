@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Wallet, ApiResponse } from '../types';
 import { loadJsonData, saveJsonData, validateWalletAddress, logAuditEntry, generateMockWallets } from '../utils';
+import { validateRequest, schemas } from '../../../lib/security/validation';
+import { withErrorHandling, createSafeError } from '../../../lib/security/errors';
+import { rateLimitVault } from '../../../lib/security/rate-limiter';
 
 const WALLETS_FILE = 'wallets.json';
 
@@ -14,144 +17,131 @@ async function initializeWallets(): Promise<Wallet[]> {
   return wallets;
 }
 
-// GET /api/vault/wallets - List all tracked wallets
-export async function GET(request: NextRequest): Promise<NextResponse<ApiResponse<Wallet[]>>> {
-  try {
-    const { searchParams } = new URL(request.url);
-    const includeInactive = searchParams.get('includeInactive') === 'true';
-    const network = searchParams.get('network');
-
-    let wallets = await initializeWallets();
-
-    // Filter inactive wallets unless requested
-    if (!includeInactive) {
-      wallets = wallets.filter(w => w.isActive);
-    }
-
-    // Filter by network if specified
-    if (network) {
-      wallets = wallets.filter(w => w.network.toLowerCase() === network.toLowerCase());
-    }
-
-    // Log audit entry
-    await logAuditEntry({
-      action: 'wallet_list',
-      endpoint: '/api/vault/wallets',
-      method: 'GET',
-      responseStatus: 200,
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: wallets,
-    });
-
-  } catch (error) {
-    console.error('Wallets GET error:', error);
-    
-    await logAuditEntry({
-      action: 'wallet_list_error',
-      endpoint: '/api/vault/wallets',
-      method: 'GET',
-      responseStatus: 500,
-    });
-
-    return NextResponse.json({
-      success: false,
-      error: 'Failed to retrieve wallets',
-    }, { status: 500 });
+// GET /api/vault/wallets - List all tracked wallets  
+export const GET = withErrorHandling(async (request: NextRequest): Promise<NextResponse<ApiResponse<Wallet[]>>> => {
+  // Apply rate limiting (lighter for read operations)
+  const rateLimitResult = await rateLimitVault(request);
+  if (!rateLimitResult.success) {
+    throw createSafeError('RATE_LIMIT_EXCEEDED', {
+      limit: rateLimitResult.limit,
+      remaining: rateLimitResult.remaining,
+      resetTime: rateLimitResult.resetTime
+    }, rateLimitResult.error);
   }
-}
+
+  const { searchParams } = new URL(request.url);
+  const includeInactive = searchParams.get('includeInactive') === 'true';
+  const network = searchParams.get('network');
+
+  // Validate network parameter if provided
+  if (network) {
+    const validNetworks = ['ethereum', 'base', 'polygon', 'arbitrum', 'optimism'];
+    if (!validNetworks.includes(network.toLowerCase())) {
+      throw createSafeError('VALIDATION_ERROR', {
+        field: 'network',
+        expected: validNetworks.join(', ')
+      });
+    }
+  }
+
+  let wallets = await initializeWallets();
+
+  // Filter inactive wallets unless requested
+  if (!includeInactive) {
+    wallets = wallets.filter(w => w.isActive);
+  }
+
+  // Filter by network if specified (using validated network)
+  if (network) {
+    wallets = wallets.filter(w => w.network.toLowerCase() === network.toLowerCase());
+  }
+
+  // Log audit entry
+  await logAuditEntry({
+    action: 'wallet_list',
+    endpoint: '/api/vault/wallets',
+    method: 'GET',
+    responseStatus: 200,
+  });
+
+  // Return success response with rate limit headers
+  const response = NextResponse.json({
+    success: true,
+    data: wallets,
+  });
+  
+  response.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
+  response.headers.set('X-RateLimit-Reset', new Date(rateLimitResult.resetTime).toISOString());
+  
+  return response;
+});
 
 // POST /api/vault/wallets - Add new wallet to track
-export async function POST(request: NextRequest): Promise<NextResponse<ApiResponse<Wallet>>> {
-  try {
-    const body = await request.json();
-
-    // Validate required fields
-    if (!body.name || !body.address || !body.network) {
-      return NextResponse.json({
-        success: false,
-        error: 'Missing required fields: name, address, network',
-      }, { status: 400 });
-    }
-
-    // Validate wallet address
-    if (!validateWalletAddress(body.address)) {
-      return NextResponse.json({
-        success: false,
-        error: 'Invalid wallet address format',
-      }, { status: 400 });
-    }
-
-    // Validate network
-    const validNetworks = ['ethereum', 'base', 'polygon', 'arbitrum', 'optimism'];
-    if (!validNetworks.includes(body.network.toLowerCase())) {
-      return NextResponse.json({
-        success: false,
-        error: `Invalid network. Supported: ${validNetworks.join(', ')}`,
-      }, { status: 400 });
-    }
-
-    const wallets = await initializeWallets();
-
-    // Check for duplicate address
-    const existingWallet = wallets.find(w => 
-      w.address.toLowerCase() === body.address.toLowerCase() && 
-      w.network.toLowerCase() === body.network.toLowerCase()
-    );
-
-    if (existingWallet) {
-      return NextResponse.json({
-        success: false,
-        error: 'Wallet already exists for this address and network',
-      }, { status: 409 });
-    }
-
-    // Create new wallet
-    const newWallet: Wallet = {
-      id: `wallet-${crypto.randomUUID()}`,
-      name: body.name.trim(),
-      address: body.address.toLowerCase(),
-      network: body.network.toLowerCase(),
-      isActive: body.isActive !== false, // Default to true
-      createdAt: new Date().toISOString(),
-    };
-
-    wallets.push(newWallet);
-    await saveJsonData(WALLETS_FILE, wallets);
-
-    // Log audit entry
-    await logAuditEntry({
-      action: 'wallet_create',
-      endpoint: '/api/vault/wallets',
-      method: 'POST',
-      walletId: newWallet.id,
-      requestBody: { name: body.name, network: body.network },
-      responseStatus: 201,
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: newWallet,
-    }, { status: 201 });
-
-  } catch (error) {
-    console.error('Wallets POST error:', error);
-    
-    await logAuditEntry({
-      action: 'wallet_create_error',
-      endpoint: '/api/vault/wallets',
-      method: 'POST',
-      responseStatus: 500,
-    });
-
-    return NextResponse.json({
-      success: false,
-      error: 'Failed to create wallet',
-    }, { status: 500 });
+export const POST = withErrorHandling(async (request: NextRequest): Promise<NextResponse<ApiResponse<Wallet>>> => {
+  // Apply rate limiting
+  const rateLimitResult = await rateLimitVault(request);
+  if (!rateLimitResult.success) {
+    throw createSafeError('RATE_LIMIT_EXCEEDED', {
+      limit: rateLimitResult.limit,
+      remaining: rateLimitResult.remaining,
+      resetTime: rateLimitResult.resetTime
+    }, rateLimitResult.error);
   }
-}
+
+  // Validate request input
+  const validation = await validateRequest(request, schemas.wallet.create);
+  if (!validation.success) {
+    throw createSafeError('VALIDATION_ERROR', { error: validation.error });
+  }
+
+  const wallets = await initializeWallets();
+
+  // Check for duplicate address (using validated data)
+  const existingWallet = wallets.find(w => 
+    w.address.toLowerCase() === validation.data.address.toLowerCase() && 
+    w.network.toLowerCase() === validation.data.network.toLowerCase()
+  );
+
+  if (existingWallet) {
+    throw createSafeError('ALREADY_EXISTS', { 
+      resource: `wallet for address ${validation.data.address} on ${validation.data.network}`
+    });
+  }
+
+  // Create new wallet with validated data
+  const newWallet: Wallet = {
+    id: `wallet-${crypto.randomUUID()}`,
+    name: validation.data.name.trim(),
+    address: validation.data.address.toLowerCase(),
+    network: validation.data.network.toLowerCase(),
+    isActive: validation.data.isActive !== false, // Default to true
+    createdAt: new Date().toISOString(),
+  };
+
+  wallets.push(newWallet);
+  await saveJsonData(WALLETS_FILE, wallets);
+
+  // Log audit entry (with sanitized data)
+  await logAuditEntry({
+    action: 'wallet_create',
+    endpoint: '/api/vault/wallets',
+    method: 'POST',
+    walletId: newWallet.id,
+    requestBody: { name: validation.data.name, network: validation.data.network },
+    responseStatus: 201,
+  });
+
+  // Return success response with rate limit headers
+  const response = NextResponse.json({
+    success: true,
+    data: newWallet,
+  }, { status: 201 });
+  
+  response.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
+  response.headers.set('X-RateLimit-Reset', new Date(rateLimitResult.resetTime).toISOString());
+  
+  return response;
+});
 
 // DELETE /api/vault/wallets - Remove wallet from tracking
 export async function DELETE(request: NextRequest): Promise<NextResponse<ApiResponse<null>>> {

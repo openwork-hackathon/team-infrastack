@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:router": "node test-agent-router.js",
+    "test:router-service": "node test-router-service.js",
+    "test:simple-router": "node test-simple-router.js",
     "test:orchestrator": "node test-orchestrator.js",
     "test:real": "node test-real-orchestrator.js",
     "demo:router": "node demo-test.js",
@@ -18,9 +20,11 @@
     "ethers": "^6.16.0",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
+    "openai": "^6.17.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
