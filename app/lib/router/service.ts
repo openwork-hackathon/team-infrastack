@@ -6,6 +6,9 @@ import { AgentOrchestrator } from '../orchestrator';
 import { secureKeyManager, KeyUsageContext } from '../security/key-manager';
 import { auditLogger } from '../security/audit-log';
 import { sanitizeForLogging } from '../security/crypto';
+import { AnthropicAdapter } from './providers/anthropic';
+import { OpenAIAdapter } from './providers/openai';
+import { GoogleProvider as GoogleAdapter } from './providers/google';
 
 // Types for the router service
 export interface RouterConfig {
@@ -151,6 +154,7 @@ export class RouterService {
     this.orchestrator = new AgentOrchestrator(this.config.baseUrl);
     this.fallbackChains = this.config.fallbackChains || DEFAULT_FALLBACK_CHAINS;
     this.initializeUsageStats();
+    this.initializeProviders();
     
     // SECURITY: No longer store API keys in the service
     // Keys are now handled securely via secureKeyManager per-request
@@ -168,6 +172,34 @@ export class RouterService {
       providerErrors: {},
       lastReset: new Date().toISOString()
     };
+  }
+
+  private initializeProviders(): void {
+    // Initialize real provider adapters
+    // Keys are passed per-request via Authorization header
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+    const googleKey = process.env.GOOGLE_API_KEY;
+
+    if (anthropicKey) {
+      const anthropic = new AnthropicAdapter({ apiKey: anthropicKey });
+      this.providers.set('anthropic', anthropic as any);
+      console.log('✅ Anthropic adapter initialized');
+    }
+
+    if (openaiKey) {
+      const openai = new OpenAIAdapter(openaiKey);
+      this.providers.set('openai', openai as any);
+      console.log('✅ OpenAI adapter initialized');
+    }
+
+    if (googleKey) {
+      const google = new GoogleAdapter(googleKey);
+      this.providers.set('google', google as any);
+      console.log('✅ Google adapter initialized');
+    }
+
+    console.log(`📡 Initialized ${this.providers.size} provider adapter(s)`);
   }
 
   // SECURITY: Removed initializeApiKeys - keys are no longer stored persistently
@@ -428,13 +460,17 @@ export class RouterService {
   }
 
   private async getProviderAdapter(modelName: string, keyId?: string): Promise<ProviderAdapter | null> {
-    // Check if we have a registered adapter for this model
-    for (const [name, adapter] of this.providers) {
-      if (await this.modelSupported(adapter, modelName)) {
-        return adapter;
-      }
+    // Determine provider from model name
+    const providerName = this.getProviderFromModel(modelName);
+    
+    // Check if we have a registered adapter for this provider
+    if (this.providers.has(providerName)) {
+      const adapter = this.providers.get(providerName)!;
+      console.log(`🔀 Using ${providerName} adapter for model ${modelName}`);
+      return adapter;
     }
 
+    console.log(`⚠️ No adapter for provider ${providerName}, using mock`);
     // If no specific adapter, create a mock one for testing
     return this.createMockAdapter(modelName);
   }
