@@ -122,9 +122,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Validate required fields
     const validationErrors: string[] = [];
     
-    if (!body.model) {
-      validationErrors.push('model is required');
-    }
+    // Model is now optional - will be auto-selected if not provided
     
     if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
       validationErrors.push('messages array is required and must not be empty');
@@ -132,6 +130,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     
     if (!apiKey) {
       validationErrors.push('API key is required (via Authorization header or x-api-key header)');
+    }
+    
+    // Auto-select model if not provided (smart routing)
+    let selectedModel = body.model;
+    let routingDecision: any = null;
+    
+    if (!selectedModel && body.messages && body.messages.length > 0) {
+      try {
+        // Build prompt from messages for routing analysis
+        const prompt = body.messages.map((m: any) => `${m.role}: ${m.content}`).join('\n');
+        
+        // Get routing decision
+        const routeUrl = new URL('/api/route', request.url);
+        const routeResponse = await fetch(routeUrl.toString(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt })
+        });
+        
+        if (routeResponse.ok) {
+          routingDecision = await routeResponse.json();
+          selectedModel = routingDecision.selectedModel;
+          console.log(`🧠 Smart routing selected: ${selectedModel} (strategy: ${routingDecision.strategy})`);
+        }
+      } catch (routeError) {
+        console.warn('Auto-routing failed, will require explicit model');
+      }
+    }
+    
+    if (!selectedModel) {
+      validationErrors.push('model is required (or provide messages for auto-routing)');
     }
 
     // Validate message format
@@ -169,7 +198,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Route the request using secure key handling
     const unifiedRequest = {
-      model: body.model,
+      model: selectedModel,
       messages: body.messages,
       temperature: body.temperature,
       max_tokens: body.max_tokens || 4096,
@@ -181,7 +210,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const response = await routerService.route(unifiedRequest);
 
     // Convert to OpenAI-compatible format
-    const chatResponse: ChatCompletionResponse = {
+    const chatResponse: ChatCompletionResponse & { routing?: any } = {
       id: response.id,
       object: 'chat.completion',
       created: response.created,
@@ -190,6 +219,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       choices: response.choices,
       usage: response.usage
     };
+    
+    // Add routing metadata if auto-routing was used
+    if (routingDecision) {
+      chatResponse.routing = {
+        strategy: routingDecision.strategy,
+        complexity: routingDecision.complexity,
+        taskType: routingDecision.taskType?.primary,
+        autoSelected: true
+      };
+    }
 
     // SECURITY: Never log the response with potential sensitive data
     console.log(`✅ Chat completion successful for request ${requestId} (${Date.now() - startTime}ms)`);
