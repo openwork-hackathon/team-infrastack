@@ -89,11 +89,21 @@ Production-ready orchestration layer that executes routing recommendations:
 - **Cost & Token Tracking** — Precise estimation and monitoring across all strategies
 - **Smart Task Decomposition** — Automatic breakdown for parallel execution
 
-### AgentVault — Treasury Management (Coming Soon)
+### AgentVault — Treasury Management ✅
 Financial infrastructure for agents:
 - Multi-wallet tracking
 - API cost logging and burn rate analysis
 - Budget alerts and spending controls
+- **Budget Envelopes** — Per-agent/task spending limits with auto-reset
+- **Circuit Breakers** — Hard stops when limits are hit
+- **Credit Reservations** — Lock credits before running, release unused
+- **Pre-flight Cost Estimation** — Know the cost before you spend
+
+### Agent Treasury — Crypto Operations ✅
+Self-service crypto for agents:
+- **Wallet Creation** — Generate EVM wallets programmatically
+- **Cross-Chain Bridging** — Bridge tokens via Across Protocol (Polygon ↔ Base ↔ Arbitrum ↔ Ethereum)
+- **DEX Swaps** — Swap tokens via Li.Fi aggregator
 
 ---
 
@@ -166,6 +176,79 @@ curl -X POST https://team-infrastack.vercel.app/api/orchestrate \
   "estimatedTokens": 3500,
   "createdAt": "2026-02-03T04:30:00Z"
 }
+```
+
+---
+
+## 🔒 Cost Control APIs (NEW)
+
+### Budget Envelopes
+```bash
+# List all envelopes
+curl https://team-infrastack.vercel.app/api/vault/envelopes
+
+# Create envelope with $10 daily limit
+curl -X POST https://team-infrastack.vercel.app/api/vault/envelopes \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Research Tasks", "limit": 1000, "period": "daily", "hardLimit": true}'
+```
+
+### Circuit Breakers
+```bash
+# List all breakers (check for triggered)
+curl https://team-infrastack.vercel.app/api/vault/breakers
+
+# Reset a triggered breaker
+curl -X PUT "https://team-infrastack.vercel.app/api/vault/breakers?id=global-daily&action=reset"
+```
+
+### Pre-flight Cost Estimation
+```bash
+# Estimate cost BEFORE running inference
+curl -X POST https://team-infrastack.vercel.app/api/vault/estimate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Your prompt here", "model": "claude-sonnet-4", "maxOutputTokens": 2000}'
+```
+
+### Credit Reservations
+```bash
+# Reserve credits before running
+curl -X POST https://team-infrastack.vercel.app/api/vault/reservations \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 50, "envelopeId": "research-tasks", "taskId": "task-123"}'
+
+# Release with actual spend
+curl -X PUT "https://team-infrastack.vercel.app/api/vault/reservations?id=res-abc" \
+  -H "Content-Type: application/json" \
+  -d '{"actualSpent": 35}'
+```
+
+---
+
+## 💰 Agent Treasury APIs (NEW)
+
+### Create Wallet
+```bash
+# Generate new EVM wallet (works on all chains)
+curl -X POST https://team-infrastack.vercel.app/api/treasury/wallets \
+  -H "Content-Type: application/json" \
+  -d '{"includeSecrets": true}'
+```
+
+### Bridge Tokens
+```bash
+# Get bridge quote (Polygon → Base)
+curl -X POST https://team-infrastack.vercel.app/api/treasury/bridge \
+  -H "Content-Type: application/json" \
+  -d '{"token": "USDC", "amount": "100", "from": "polygon", "to": "base", "depositor": "0x..."}'
+```
+
+### Swap Tokens
+```bash
+# Get swap quote (ETH → USDC on Base)
+curl -X POST https://team-infrastack.vercel.app/api/treasury/swap \
+  -H "Content-Type: application/json" \
+  -d '{"fromToken": "ETH", "toToken": "USDC", "amount": "0.1", "chain": "base", "walletAddress": "0x..."}'
 ```
 
 ---
